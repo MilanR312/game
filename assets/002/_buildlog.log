@@ -1,0 +1,32 @@
+{ "time": "12:05:42.7095", "level": "INFO", "site": "Gaea.Build.Args.ReadArguments::0", "data": "\"C:\\Users\\milan\\AppData\\Local\\QuadSpinner\\Gaea\\Gaea.Build.exe\" \"C:\\Users\\milan\\OneDrive\\Documenten\\Gaea\\testing.tor\" --open    --buildlog" }
+{ "time": "12:05:42.9261", "level": "INFO", "site": "A.NGL.E::0", "data": "Version 1.3.1.5" }
+{ "time": "12:05:44.1791", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Mountain" }
+{ "time": "12:05:46.6117", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Mountain_Fold" }
+{ "time": "12:05:48.3970", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Transform" }
+{ "time": "12:05:48.5267", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Range" }
+{ "time": "12:05:48.6696", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Combine" }
+{ "time": "12:05:48.7255", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Zero Borders" }
+{ "time": "12:05:49.8722", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Erosion" }
+{ "time": "12:05:50.6285", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Height" }
+{ "time": "12:05:51.8058", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Sunlight" }
+{ "time": "12:05:54.1148", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Snowfall" }
+{ "time": "12:05:54.3886", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Sea" }
+{ "time": "12:05:54.6713", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Fx" }
+{ "time": "12:05:54.6922", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Invert" }
+{ "time": "12:05:54.7092", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Rivers" }
+{ "time": "12:05:57.2097", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: height" }
+{ "time": "12:05:57.3498", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: MeshOutput" }
+{ "time": "12:05:59.3725", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Protrusion" }
+{ "time": "12:06:09.0647", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Fx" }
+{ "time": "12:06:09.1929", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Combine" }
+{ "time": "12:06:09.2328", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Cracks" }
+{ "time": "12:06:09.4567", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Fx" }
+{ "time": "12:06:09.4567", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Arboreal" }
+{ "time": "12:06:12.3539", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: PineMap" }
+{ "time": "12:06:12.5950", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Arboreal" }
+{ "time": "12:06:15.8745", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Arboreal" }
+{ "time": "12:06:19.2436", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Oakmap" }
+{ "time": "12:06:19.4578", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Shrubmap" }
+{ "time": "12:06:19.6535", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: SeaDepth" }
+{ "time": "12:06:19.9204", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: Fx" }
+{ "time": "12:06:20.0127", "level": "INFO", "site": "Gaea.Build.Builders.Builder.PerformBuild::0", "data": "Building: RiverDepth" }
