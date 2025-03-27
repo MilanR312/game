@@ -51,18 +51,24 @@ pub fn load_map(
         Transform::from_xyz(0.25, 0.25, 5.0)
     ));
 
-    let mesh_handle = asset_server.load::<Mesh>("002/Mesher.obj");
     let heightmap = HeightMap::from_file("assets/002/Output.r32", 1024).unwrap();
     commands.insert_resource(heightmap);
     let world_size = 100.0;
 
-
+    let ground = asset_server.load::<Mesh>("005/Ground.obj");
+    let mountain = asset_server.load::<Mesh>("005/Mountain.obj");
+    let world_transform = Transform::default()
+        .with_translation(Vec3::new(0.0, 0.0, world_size))
+        .with_scale(Vec3::new(world_size,world_size*2.0,world_size));
     commands.spawn((
-        Mesh3d(mesh_handle),
+        Mesh3d(ground),
         MeshMaterial3d(materials.add(Color::linear_rgb(23.0 / 256.0, 138.0 / 256.0, 29.0 / 256.0))),
-        Transform::default()
-            .with_translation(Vec3::new(0.0, 0.0, world_size))
-            .with_scale(Vec3::new(world_size,world_size*2.0,world_size))
+        world_transform.clone()
+    ));
+    commands.spawn((
+        Mesh3d(mountain),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.3, 0.3, 0.3))),
+        world_transform.clone()
     ));
     commands.insert_resource(MapData{
         size: world_size
