@@ -21,7 +21,7 @@ pub fn spawn_ocean(
     let mat = materials.add(StandardWaterMaterial {
         base: default(),
         extension: WaterMaterial {
-          amplitude: 3.0,
+          //amplitude: 0.0001,
           coord_scale: Vec2::splat(256.0 * 4.0),
           ..default()
         },

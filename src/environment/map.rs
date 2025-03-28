@@ -55,22 +55,29 @@ pub fn load_map(
     commands.insert_resource(heightmap);
     let world_size = 100.0;
 
-    let ground = asset_server.load::<Mesh>("005/Ground.obj");
-    let mountain = asset_server.load::<Mesh>("005/Mountain.obj");
+    let ground = asset_server.load::<Mesh>("011/Mesher.obj");
+    let texture = asset_server.load("011/Combine.png");
+    //let mountain = asset_server.load::<Mesh>("005/Mountain.obj");
     let world_transform = Transform::default()
-        .with_translation(Vec3::new(0.0, 0.0, world_size))
+        .with_translation(Vec3::new(world_size/2.0, 0.0, world_size/2.0))
         .with_scale(Vec3::new(world_size,world_size*2.0,world_size));
     commands.spawn((
         Mesh3d(ground),
-        MeshMaterial3d(materials.add(Color::linear_rgb(23.0 / 256.0, 138.0 / 256.0, 29.0 / 256.0))),
+        MeshMaterial3d(materials.add(StandardMaterial{
+            base_color_texture: Some(texture),
+            perceptual_roughness: 0.9,
+            metallic: 0.0,
+            reflectance: 0.0,
+            ..Default::default()
+        })),
         world_transform.clone()
     ));
-    commands.spawn((
+    /*commands.spawn((
         Mesh3d(mountain),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.3, 0.3, 0.3))),
         world_transform.clone()
     ));
     commands.insert_resource(MapData{
         size: world_size
-    });
+    });*/
 }

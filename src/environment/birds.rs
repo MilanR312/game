@@ -116,7 +116,7 @@ impl Default for BirdRules {
             seperation: 0.05,
             allignment: 0.05,
             cohesion: 0.0005,
-            horizontal_flock_cohesion: 0.0003,
+            horizontal_flock_cohesion: 0.0001,
             vertical_flock_cohesion: 0.001,
         }
     }
