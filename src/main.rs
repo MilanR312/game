@@ -9,6 +9,7 @@ use bevy_water::{material::{StandardWaterMaterial, WaterMaterial}, WaterPlugin, 
 use camera::CameraPlugin;
 use environment::EnvironmentPlugin;
 use iyes_perf_ui::{entries::{PerfUiFixedTimeEntries, PerfUiFramerateEntries, PerfUiSystemEntries}, prelude::{PerfUiAllEntries, PerfUiDefaultEntries}, PerfUiPlugin};
+use material::TerrainMaterialExtension;
 use noise::NoiseFn;
 use rand::{rng, rngs::ThreadRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -26,17 +27,28 @@ mod ui;
 mod sky;
 mod environment;
 mod camera;
-
+mod pathfinding;
+mod material;
 
 fn main() -> eyre::Result<()> {
-    App::new().add_plugins(DefaultPlugins)
+    let mut wgpu_settings = WgpuSettings::default();
+    wgpu_settings.features.set(WgpuFeatures::VERTEX_WRITABLE_STORAGE, true);
+    App::new().add_plugins(DefaultPlugins.set(
+        RenderPlugin{
+            render_creation: wgpu_settings.into(),
+            synchronous_pipeline_compilation: false
+        }
+    ).set(ImagePlugin::default_nearest()))
 
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default()) // load the physics sym for the birds
+        .add_plugins(MaterialPlugin::<
+            ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>
+            >::default()) // register the custom material as an extension to the base material
         .add_plugins(ObjPlugin) // load obj file loading
         .add_plugins(UiPlugin) // load our ui
-        .add_plugins(SkyPlugin)
-        .add_plugins(CameraPlugin)
-        .add_plugins(EnvironmentPlugin)
+        .add_plugins(SkyPlugin) // load sky related assets
+        .add_plugins(CameraPlugin) // load the camera
+        .add_plugins(EnvironmentPlugin) // load the environment
 
         .run();
     Ok(())

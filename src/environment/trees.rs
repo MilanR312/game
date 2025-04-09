@@ -12,6 +12,7 @@ use super::map::HeightMap;
 struct TreePositions {
     positions: Vec<Transform>,
 }
+// TODO: generate positions in different thread and use a channel to send them to renderer so we dont block on tree generation
 
 pub fn spawn_trees(
     mut commands: Commands,
@@ -32,7 +33,7 @@ pub fn spawn_trees(
     });
 
     let mask = Mask::from_file("assets/002/Oakmap.r32", 1024).expect("failed to find mask");
-    for [x, y] in BlueNoise::new(0.002, &mask).take(5000) {
+    for [x, y] in BlueNoise::new(0.002, &mask).take(5000) { // generate 5000 trees at a minimum distance of 0.002 from eachother
         let mut local_rng = rand::prelude::SmallRng::seed_from_u64((x * y + y) as u64);
         let height = height_map.height_at(x, y);
         let rand_transform = Transform::from_xyz(x * 100.0, height * 100.0, y * 100.0)

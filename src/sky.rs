@@ -15,7 +15,7 @@ impl Plugin for SkyPlugin {
     }
 }
 
-
+// updates the position of the sun and the atmosphere sim when the ui says to change, this could later actually use time with a small modification
 pub fn daylight(
     mut atmosphere: AtmosphereMut<Nishita>,
     ui_state: Res<UIState>,
@@ -30,14 +30,16 @@ pub fn daylight(
         query.1.illuminance = pos.y.max(0.0).powf(2.0) * 10000.0;
     }
 }
-
+// marker component that defines which light is the sun
 #[derive(Component)]
 pub struct Sun;
 
 pub fn setup_sky(
     mut commands: Commands
 ) {
+    // add the atmosphere model
     commands.insert_resource(AtmosphereModel::default());
+    // and spawn the sun marker component with a strong light and a position
     commands.spawn((
         Sun,
         DirectionalLight{

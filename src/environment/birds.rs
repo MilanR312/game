@@ -4,11 +4,17 @@ use rand::{rng, Rng};
 
 use super::map::{HeightMap, MapData};
 
+// marker component for a bird
 #[derive(Component)]
 pub struct Bird;
+// a component that keeps track of the average speed and direction of all birds near a bird
+// this is done due to rust aliasing guarantees that dont allow us to calculate this in the boid function
+// so we add another function that precalculates this and the boid function then reads it
 #[derive(Component)]
 pub struct AreaSpeed(Vec3);
 
+// a marker for a flock, flocks are used to keep the birds close to the island. All birds always have some force pulling them to the closest flock
+// flocks are fixed position items
 #[derive(Component)]
 pub struct Flock;
 
@@ -20,12 +26,14 @@ pub fn spawn_birds(
     height_map: Res<HeightMap>,
     map_data: Res<MapData>
 ) {
+    // insert the bird rules, these are things like cohesion factors, they are stored as a resource so it can be changed on the fly
     commands.insert_resource(BirdRules::default());
 
-    let mat = materials.add(Color::linear_rgb(0.0, 0.0, 0.0));
+    let mat = materials.add(Color::linear_rgb(0.0, 0.0, 0.0)); // currently the birds are just black cubes, need to add a mesh here
     let mesh = meshes.add(Cuboid::from_length(0.5));
     let mut rng = rng();
     for j in 0..1 {
+        // spawn 1 flock at the centre of the island
         commands.spawn((
             Flock,
             Transform::from_xyz(0.5 * map_data.size, height_map.height_at(0.5, 0.5) * map_data.size + 10.0, 0.5 * map_data.size),
@@ -34,6 +42,7 @@ pub fn spawn_birds(
         ));
     }
     for i in 0..100 {
+        // spawn 100 birds randomly
         let x = rng.random_range(-5.0 .. 5.0) + 50.0;
         let z = rng.random_range(-5.0 .. 5.0) + 50.0;
         commands.spawn((
@@ -66,7 +75,7 @@ pub fn spawn_birds(
                     rng.random_range(-1.0 .. 1.0)
                 ).normalize_or_zero()
             },
-            RigidBody::KinematicVelocityBased
+            RigidBody::KinematicVelocityBased // tell the physics sym this is a velocity based item
         ));
     }
 
@@ -76,21 +85,21 @@ pub fn spawn_birds(
 
 const ROI: f32 = 1.5;
 const ROA: f32 = 0.7;
-
+// calculate the area speed of the birds
 pub fn calculate_area_speed(
-    speeds: Query<(&Velocity, &Transform), With<Bird>>, // we vragen voor elke vogel de snelheid en positie
-    mut areaspeed: Query<(Entity, &mut AreaSpeed), With<Bird>> // en appart ook elke gemiddelde snelheid + een sleutel dat elk object uniek identificieerd
+    speeds: Query<(&Velocity, &Transform), With<Bird>>, // for every bird we query the speed and position
+    mut areaspeed: Query<(Entity, &mut AreaSpeed), With<Bird>> // and also query a mutable reference to the speed and an entity key
 ){
-    for (entity, mut areaspeed) in areaspeed.iter_mut() { // we gaan dan over elke gemiddelde snelheid (en ook vogel)
-        let (_, own_pos) = speeds.get(entity).unwrap(); // en pakken dan de positie op in de andere query met de unieke sleutel
+    for (entity, mut areaspeed) in areaspeed.iter_mut() { // iterate over all the speeds and bird keys
+        let (_, own_pos) = speeds.get(entity).unwrap(); // get the speed and location for the bird key
 
-        let (group_velocity, count) = speeds.iter() // voor elke positie en snelheid
-            .filter(|x| x.1.translation.distance_squared(own_pos.translation) < ROI * ROI)// behalve als ze buiten de region of influence liggen
-            .fold((Vec3::splat(0.0), 0.0), |acc, ell|{ // berekenen we de som van de snelheiden + aantal snelheiden
+        let (group_velocity, count) = speeds.iter() // for every bird in the query
+            .filter(|x| x.1.translation.distance_squared(own_pos.translation) < ROI * ROI)// if they are within the region of influence
+            .fold((Vec3::splat(0.0), 0.0), |acc, ell|{ // calculate the average speed
                 (acc.0 + ell.0.linvel, acc.1 + 1.0)
             });
         
-        *areaspeed = AreaSpeed((group_velocity / count).normalize_or_zero()); // en steken we dit in de gemiddelde snelheid
+        *areaspeed = AreaSpeed((group_velocity / count).normalize_or_zero()); // and save it
     }
 }
 
@@ -123,32 +132,32 @@ impl Default for BirdRules {
 }
 
 pub fn bird_boids(
-    mut query: Query<(Entity, &mut Velocity, &AreaSpeed), With<Bird>>, // hier vragen we dan terug de sleutel op, de snelheid en de gemiddelde snelheid voor elke vogel
+    mut query: Query<(Entity, &mut Velocity, &AreaSpeed), With<Bird>>, // Query the key, speed, and average speed
     flocks: Query<&Transform, With<Flock>>,
     ui_state: Res<BirdRules>,
-    transforms: Query<&Transform, With<Bird>>, // en in een apparte query de positie van elke vogel
+    transforms: Query<&Transform, With<Bird>>, // and a query for the position
 ) {
     for (entity, mut velocity, areaspeed) in query.iter_mut() {
-        let position = transforms.get(entity).unwrap(); // we pakken de momentele vogel zn positie
+        let position = transforms.get(entity).unwrap(); // get the current birds position
 
-        // seperation regel
-        let seperation = transforms.iter() // voor elke positie
-            .filter(|x| *x != position) // behalve onze vogel zn positie
-            .filter(|x| x.translation.distance_squared(position.translation) < ROA * ROA) // en elke vogel dat buiten de region of avoidance ligt
-            .fold(Vec3::splat(0.0), |acc, point| { // berekenen we de som van de afstanden (dit kan ook met een for loop hoor :) )
+        // seperation rule
+        let seperation = transforms.iter() // for every position
+            .filter(|x| *x != position) // except our bird
+            .filter(|x| x.translation.distance_squared(position.translation) < ROA * ROA) // and if its within the region of avoidance
+            .fold(Vec3::splat(0.0), |acc, point| { // calculate the influence
                 acc + ( position.translation - point.translation )
             });
-        velocity.linvel += seperation * ui_state.seperation; // en veranderen we de snelheid met deze seperation
+        velocity.linvel += seperation * ui_state.seperation; 
         
 
         // allignment
-        let allignment = areaspeed.0 - velocity.linvel; // voor allignment gebruiken we de areaspeed dat we vorige stap berekend hebben
+        let allignment = areaspeed.0 - velocity.linvel; // use the precalculated area speed
         velocity.linvel += allignment * ui_state.allignment;
         
         // cohesion step
-        let (pos_sum, count) = transforms.iter() // dan terug voor elke positie
-            .filter(|x| x.translation.distance_squared(position.translation) < ROI * ROI) // behalve deze buiten de region of influence
-            .fold((Vec3::splat(0.0), 0.0), |acc, ell|{ // nemen we de gemiddelde positie
+        let (pos_sum, count) = transforms.iter()
+            .filter(|x| x.translation.distance_squared(position.translation) < ROI * ROI) 
+            .fold((Vec3::splat(0.0), 0.0), |acc, ell|{
                 (acc.0 + ell.translation, acc.1+1.0)
             });
         let average_pos = pos_sum / count;

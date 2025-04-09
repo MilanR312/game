@@ -6,7 +6,7 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin)
-            .add_plugins((
+            .add_plugins(( // these plugins allow us to see debug info like fps
                 FrameTimeDiagnosticsPlugin,
                 EntityCountDiagnosticsPlugin,
                 SystemInformationDiagnosticsPlugin,
@@ -17,11 +17,13 @@ impl Plugin for UiPlugin {
     }
 }
 
-
+/// State of the ui kept as a component in the ECS
 #[derive(Resource, Default)]
 pub struct UIState{
     pub sun_position: f32
 }
+
+/// egui is a rust alternatieve for dear imgui, it runs every frame and is used here to give use control of the suns location
 pub fn ui(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UIState>,

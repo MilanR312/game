@@ -7,6 +7,7 @@ edition = "2024"
 bevy = { version = "0.15.3", features = ["dynamic_linking", "jpeg", "meshlet", "file_watcher"] }
 bevy_atmosphere = "0.12.2"
 bevy_egui = "0.33.0"
+bevy_hanabi = {git = "https://github.com/djeedai/bevy_hanabi"}
 bevy_obj = "0.15.1"
 bevy_rapier3d = "0.29.0"
 bevy_water = "0.15.2"
@@ -15,11 +16,15 @@ delaunator = "1.0.2"
 earcutr = "0.4.3"
 eyre = "0.6.12"
 fast_poisson = "1.0.0"
+image = "0.25.6"
 iyes_perf_ui = "0.4.0"
 noise = { version = "0.8.0", features = ["images"] }
+ordered-float = "5.0.0"
+pathfinding = "4.14.0"
 rand = "0.9.0"
 rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
+slotmap = "1.0.7"
 smooth-bevy-cameras = "0.13.0"
 spade = "2.13.1"
 thiserror = "2.0.12"

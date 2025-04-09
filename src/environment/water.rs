@@ -5,24 +5,20 @@ use crate::mask::{BlueNoise, Mask};
 
 use super::map::HeightMap;
 
-
+// spawns an ocean mesh at a specified height, uses a prebuilt material from bevy_water to actually give nice oceans
 pub fn spawn_ocean(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardWaterMaterial>>,
     mut materials2: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>
 ) {
-    commands.insert_resource(WaterSettings{
-        height: 1.0,
-        ..Default::default()
-    });
     let world_size = 100.0;
     let plane = meshes.add(PlaneMeshBuilder::from_length(world_size * 10.0).subdivisions(18).build());
     let mat = materials.add(StandardWaterMaterial {
         base: default(),
         extension: WaterMaterial {
           //amplitude: 0.0001,
-          coord_scale: Vec2::splat(256.0 * 4.0),
+          coord_scale: Vec2::splat(256.0 * 4.0), // change ocean scale to make waves more realistic
           ..default()
         },
       });
@@ -34,14 +30,14 @@ pub fn spawn_ocean(
             Transform::from_xyz(world_size / 2.0 + delta * world_size / 2.0, 2.0, world_size / 2.0)
         ));
     }
-    commands.spawn((
-        Mesh3d(meshes.add(plane2)),
+    commands.spawn(( // the map is a limited size but if we look into the ocean this would look weird since its semi transparent
+        Mesh3d(meshes.add(plane2)), // this adds a gigantic plane so that the map seems to continue even if it stops having any detail
         MeshMaterial3d(materials2.add(Color::WHITE)),
         Transform::from_xyz(0.0, 0.1, 0.0)
     ));
 }
 
-
+// big TODO
 pub fn spawn_rivers(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,

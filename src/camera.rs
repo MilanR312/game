@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::ScreenSpaceReflections, prelude::*, window::CursorGrabMode};
+use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::ScreenSpaceReflections, prelude::*, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
@@ -12,15 +12,17 @@ use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCamera
 pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
+        /*app.add_plugins((
             LookTransformPlugin,
-            UnrealCameraPlugin::default()
-        ))
+            UnrealCameraPlugin::default() We used to use a prebuilt package for movement now switched to custom one
+        ))*/
+        app.add_plugins(TemporalAntiAliasPlugin) // allows use of TAA to reduce noise whilst we figure out mipmaps in the custom material
         .add_systems(Startup, spawn_camera)
         .add_systems(Update, (rotate_camera, move_camera, handle_others));
     }
 }
 
+// camera state currently only allows flying camera smoothed with velocity based inputs, this could also make use of rapiers physics engine in the future
 #[derive(Component)]
 pub enum Camera{
     Flying{
@@ -28,11 +30,14 @@ pub enum Camera{
         v_pitch: f32
     }
 }
+
+// state that tracks wether or not the cursor is grabbed
 #[derive(Component)]
 pub struct CameraData{
     is_mouse_grabbed: bool
 }
 
+// rotate the camera based on the mouse motion in the past frame
 pub fn rotate_camera(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
@@ -64,6 +69,7 @@ pub fn rotate_camera(
         _ => {}
     }
 }
+// move the camera based on key inputs
 pub fn move_camera(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -97,17 +103,18 @@ pub fn move_camera(
             }
             move_delta *= time.delta_secs() * 10.0;
             let rotation = transform.rotation;
-            transform.translation += rotation * move_delta;
+            transform.translation += rotation * move_delta; // rotation transforms it from local space to camera orientation so z is forwards
         },
         _ => {}
     }
 }
+// handle other keys like switching between captured inputs and later maybe other camera modes
 pub fn handle_others(
     keys: Res<ButtonInput<KeyCode>>,
-    camera: Single<(&mut Camera, &mut CameraData)>,
+    camera: Single<(&mut Camera, &mut CameraData, &Transform)>,
     mut window: Single<&mut Window>
 ) {
-    let (cam, mut data) = camera.into_inner();
+    let (cam, mut data, location) = camera.into_inner();
     match &*cam {
         Camera::Flying { .. } => {
             if keys.pressed(KeyCode::Enter) {
@@ -122,6 +129,9 @@ pub fn handle_others(
             }
         }
     }
+    if keys.pressed(KeyCode::KeyM) {
+        println!("at: {location:?}");
+    }
 }
 
 pub fn spawn_camera(
@@ -129,20 +139,20 @@ pub fn spawn_camera(
 ) {
     commands.spawn((
         Camera3d::default(),
-        AtmosphereCamera::default(),
-        Camera::Flying{ v_pitch: 0.0, v_yaw: 0.0 },
+        AtmosphereCamera::default(), // enable atmosphere rendering
+        Camera::Flying{ v_pitch: 0.0, v_yaw: 0.0 }, // start the camera as a flying cam
 
-        Msaa::Off,
+        //Msaa::Off, // disable MSAA
+        //TemporalAntiAliasing::default(), // but use TAA
         //DepthPrepass,
         //DeferredPrepass,
-        ScreenSpaceReflections::default(),
+        //ScreenSpaceReflections::default(),
+        //Bloom {
+        //    ..Default::default()
+        //},
         CameraData {
             is_mouse_grabbed: true
-        },
-
-        //UnrealCameraBundle::new(
-        //    UnrealCameraController::default(), 
-        //    Vec3::new(50.0, 30.0, -10.0), Vec3::new(60.0, 3.0, 30.0), Vec3::Y)
-        Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(60.0, 3.0, 30.0), Vec3::Y)
+        }, // grab the mouse at the start
+        Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(0.0, 11.0, 0.0), Vec3::Y) // and give it a default position
     ));
 }
