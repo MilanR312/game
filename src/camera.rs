@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::ScreenSpaceReflections, prelude::*, window::CursorGrabMode};
+use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{ScreenSpaceReflections, VolumetricFog}, prelude::*, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
@@ -24,7 +24,7 @@ impl Plugin for CameraPlugin {
 
 // camera state currently only allows flying camera smoothed with velocity based inputs, this could also make use of rapiers physics engine in the future
 #[derive(Component)]
-pub enum Camera{
+pub enum CameraType{
     Flying{
         v_yaw: f32,
         v_pitch: f32
@@ -41,7 +41,7 @@ pub struct CameraData{
 pub fn rotate_camera(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
-    camera: Single<(&mut Transform, &mut Camera, &CameraData)>
+    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>
 ) {
     let delta = accumulated_mouse_motion.delta * time.delta_secs();
     const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
@@ -49,7 +49,7 @@ pub fn rotate_camera(
     const REDUCE: f32 = 2.0;
     let (mut transform,mut camera, data) = camera.into_inner();
     match &mut *camera {
-        Camera::Flying{v_pitch, v_yaw} if data.is_mouse_grabbed => {
+        CameraType::Flying{v_pitch, v_yaw} if data.is_mouse_grabbed => {
             // in flying mode we use a velocity based controller so it gives smoother movements
             let v_delta_yaw = -delta.x * 0.05;
             let v_delta_pitch = -delta.y * 0.05;
@@ -73,11 +73,11 @@ pub fn rotate_camera(
 pub fn move_camera(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    camera: Single<(&mut Transform, &mut Camera, &CameraData)>
+    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>
 ) {
     let (mut transform, mut camera, data) = camera.into_inner();
     match &mut *camera {
-        Camera::Flying { .. } if data.is_mouse_grabbed => {
+        CameraType::Flying { .. } if data.is_mouse_grabbed => {
             let mut move_delta = Vec3::ZERO;
             // keycodes make it work on querty and azerty
             if keys.pressed(KeyCode::KeyW) {
@@ -111,12 +111,12 @@ pub fn move_camera(
 // handle other keys like switching between captured inputs and later maybe other camera modes
 pub fn handle_others(
     keys: Res<ButtonInput<KeyCode>>,
-    camera: Single<(&mut Camera, &mut CameraData, &Transform)>,
+    camera: Single<(&mut CameraType, &mut CameraData, &Transform)>,
     mut window: Single<&mut Window>
 ) {
     let (cam, mut data, location) = camera.into_inner();
     match &*cam {
-        Camera::Flying { .. } => {
+        CameraType::Flying { .. } => {
             if keys.pressed(KeyCode::Enter) {
                 data.is_mouse_grabbed = true;
                 window.cursor_options.grab_mode = CursorGrabMode::Confined;
@@ -140,19 +140,27 @@ pub fn spawn_camera(
     commands.spawn((
         Camera3d::default(),
         AtmosphereCamera::default(), // enable atmosphere rendering
-        Camera::Flying{ v_pitch: 0.0, v_yaw: 0.0 }, // start the camera as a flying cam
+        Camera {
+            hdr: true,
+            ..Default::default()
+        },
+        CameraType::Flying{ v_pitch: 0.0, v_yaw: 0.0 }, // start the camera as a flying cam
 
         //Msaa::Off, // disable MSAA
         //TemporalAntiAliasing::default(), // but use TAA
         //DepthPrepass,
         //DeferredPrepass,
         //ScreenSpaceReflections::default(),
-        //Bloom {
-        //    ..Default::default()
-        //},
+        Bloom {
+            ..Default::default()
+        },
+        Tonemapping::TonyMcMapface,
         CameraData {
             is_mouse_grabbed: true
         }, // grab the mouse at the start
-        Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(0.0, 11.0, 0.0), Vec3::Y) // and give it a default position
+        VolumetricFog {
+            ..Default::default()
+        },
+        Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y) // and give it a default position
     ));
 }

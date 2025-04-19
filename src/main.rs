@@ -21,7 +21,6 @@ use bevy_rapier3d::prelude::*;
 use thiserror::Error;
 use ui::UiPlugin;
 
-
 mod mask;
 mod ui;
 mod sky;
@@ -39,7 +38,6 @@ fn main() -> eyre::Result<()> {
             synchronous_pipeline_compilation: false
         }
     ).set(ImagePlugin::default_nearest()))
-
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default()) // load the physics sym for the birds
         .add_plugins(MaterialPlugin::<
             ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>

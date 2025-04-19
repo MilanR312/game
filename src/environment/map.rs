@@ -1,9 +1,10 @@
-use std::{f32::consts::PI, fs::File, io::Read, path::Path};
+use std::{f32::consts::PI, fs::File, io::Read, ops::BitOr, path::Path};
 
 use bevy::{asset::RenderAssetUsages, image::{ImageAddressMode, ImageFilterMode, ImageFormatSetting, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, pbr::ExtendedMaterial, prelude::*, render::render_resource::{AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat, TextureUsages}};
-use image::ImageReader;
+use bitflags::bitflags;
+use image::{ImageBuffer, ImageReader, Rgba};
 
-use crate::material::TerrainMaterialExtension;
+use crate::{material::TerrainMaterialExtension};
 
 /// a heigthmap loaded from a raw file
 #[derive(Resource)]
@@ -27,9 +28,108 @@ impl HeightMap {
 
 #[derive(Resource)]
 pub struct MapData{
-    pub size: f32
+    pub size: f32,
+    biome_map: ImageBuffer<Rgba<u8>, Vec<u8>>
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Biome {
+    Plains,
+    Forest,
+    Taiga,
+    Mountains
+}
+impl Biome {
+    pub fn from_u8(num: u8) -> Option<Self>{
+        let out = match num {
+            0 => Self::Plains,
+            1 => Self::Forest,
+            2 => Self::Taiga,
+            3 => Self::Mountains,
+            _ => return None
+        };
+        Some(out)
+    }
+    pub const fn to_bitflag(&self) -> u8 {
+        match self {
+            Self::Plains => 0b1,
+            Self::Forest => 0b10,
+            Self::Taiga => 0b100,
+            Self::Mountains => 0b1000,
+        }
+    }
+    pub fn to_collection(&self) -> BiomeCollection {
+        match self {
+            Self::Plains => BiomeCollection::Plains,
+            Self::Forest => BiomeCollection::Forest,
+            Self::Taiga => BiomeCollection::Taiga,
+            Self::Mountains => BiomeCollection::Mountains
+        }
+    }
+}
+bitflags! {
+    #[derive(Component, Copy, Clone)]
+    pub struct BiomeCollection: u8 {
+        const Plains = Biome::Plains.to_bitflag();
+        const Forest = Biome::Forest.to_bitflag();
+        const Taiga = Biome::Taiga.to_bitflag();
+        const Mountains = Biome::Mountains.to_bitflag();
+    }
+}
+impl BitOr<Biome> for BiomeCollection {
+    type Output = Self;
+    fn bitor(self, rhs: Biome) -> Self::Output {
+        self | rhs.to_collection()
+    }
+}
+impl BitOr for Biome {
+    type Output = BiomeCollection;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.to_collection() | rhs.to_collection()
+    }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct BiomeBlend{
+    pub a: Biome,
+    pub b: Biome,
+    pub blend: f32
+}
+impl BiomeBlend {
+    pub fn get_primary_biome(&self) -> Biome {
+        if self.blend > 0.5 {
+            self.a
+        } else {
+            self.b
+        }
+    }
+    pub fn get_secondary_biome(&self) -> Biome {
+        if self.blend > 0.5 {
+            self.b
+        } else {
+            self.a
+        }
+    }
+}
+impl MapData {
+    pub fn new(size: f32, biome_map: ImageBuffer<Rgba<u8>, Vec<u8>>) -> Self {
+        Self {
+            size,
+            biome_map
+        }
+    }
+    pub fn biome_at_point(&self, x: f32, y: f32) -> Option<BiomeBlend> {
+        let (x,y) = (
+            x / self.size * self.biome_map.width() as f32,
+            y / self.size * self.biome_map.height() as f32
+        );
+        let Rgba([r,g,b,a]) = self.biome_map.get_pixel_checked(x as u32, y as u32)?;
+        Some(BiomeBlend {
+            a: Biome::from_u8(*r).unwrap(),
+            b: Biome::from_u8(*b).unwrap(),
+            blend: *b as f32 / 255.0
+        })
+    }
+}
 pub fn load_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -71,6 +171,8 @@ pub fn load_map(
     let img = ImageReader::open("assets/test.png").unwrap()
         .decode().unwrap()
         .to_rgba8();
+    let biome_map = MapData::new(world_size, img.clone());
+    commands.insert_resource(biome_map);
     let (width, height) = img.dimensions();
     let data = img.into_raw();
 

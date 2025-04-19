@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{pbr::{FogVolume, VolumetricLight}, prelude::*};
 use bevy_atmosphere::{model::AtmosphereModel, plugin::AtmospherePlugin, prelude::{AtmosphereMut, Nishita}};
 
 use crate::ui::UIState;
@@ -8,10 +8,12 @@ pub struct SkyPlugin;
 
 impl Plugin for SkyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
+        app
+        .add_plugins(
             AtmospherePlugin
-        ).add_systems(Update, daylight)
-        .add_systems(Startup, setup_sky);
+        )
+        .add_systems(Update, daylight)
+        .add_systems(Startup, (setup_sky, spawn_clouds));
     }
 }
 
@@ -47,6 +49,49 @@ pub fn setup_sky(
             shadows_enabled: true,
             ..Default::default()
         },
+        VolumetricLight,
         Transform::from_rotation(Quat::from_rotation_x(-0.340)),
     ));
+}
+
+#[derive(Component)]
+pub struct Cloud;
+
+pub fn spawn_clouds(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>
+) {
+    commands.spawn((
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        PointLight {
+            shadows_enabled: true,
+            color: Color::srgb(1.0, 0.0, 0.0),
+            intensity: 100.0,
+            ..Default::default()
+        },
+        VolumetricLight,
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_xyz(1.0, 0.5, 1.0)
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_xyz(1.0, 0.5, -1.0)
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0)))),
+        MeshMaterial3d(materials.add(Color::srgb(0.0, 0.0, 1.0))),
+        Transform::from_xyz(0.0, 0.0, 0.0)
+    ));
+    /*commands.spawn((
+        FogVolume {
+            ..Default::default()
+        },
+        Transform::from_xyz(0.0, 0.0, 0.0)
+            .with_scale(Vec3::splat(35.0))
+    ));*/
 }
