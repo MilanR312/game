@@ -9,16 +9,20 @@ pub struct TerrainMaterialExtension {
     #[sampler(101, sampler_type = "non_filtering")]
     pub splatmap: Handle<Image>,
 
-    #[texture(102, dimension = "2d_array")]
+    #[texture(102, dimension = "2d")]
     #[sampler(103)]
-    pub textures: Handle<Image>,
+    pub filtered_splatmap: Handle<Image>,
 
     #[texture(104, dimension = "2d_array")]
     #[sampler(105)]
-    pub normals: Handle<Image>,
+    pub textures: Handle<Image>,
 
     #[texture(106, dimension = "2d_array")]
     #[sampler(107)]
+    pub normals: Handle<Image>,
+
+    #[texture(108, dimension = "2d_array")]
+    #[sampler(109)]
     pub parallax: Handle<Image>
 }
 impl MaterialExtension for TerrainMaterialExtension {

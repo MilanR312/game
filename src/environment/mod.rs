@@ -19,20 +19,20 @@ pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app
-            /*.insert_resource(WaterSettings { // setup the water plugin
+            .insert_resource(WaterSettings { // setup the water plugin
                 amplitude: 0.2,
                 height: 1.9,
                 ..Default::default()
-            })*/
-            //.add_plugins(WaterPlugin)
+            })
+            .add_plugins(WaterPlugin)
             .add_plugins(HanabiPlugin)
             .add_plugins(grass::GrassPlugin)
             .init_gizmo_group::<waypoints::PathGizmos>()
             .add_systems(Startup, (
-                waypoints::spawn_waypoints,
-                //load_map,
-                //spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
-                //spawn_trees.after(load_map), // they can still run in parallel so no chain is used
+                load_map,
+                waypoints::spawn_waypoints.after(load_map),
+                spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
+                spawn_trees.after(load_map), // they can still run in parallel so no chain is used
                 //spawn_rivers.after(load_map),
                 //spawn_birds.after(load_map),
                 //fireflies::setup_fireflies

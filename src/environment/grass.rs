@@ -12,6 +12,7 @@ use std::borrow::BorrowMut;
 use bevy::ecs::system::{SystemState};
 use bevy::ecs::world::CommandQueue;
 use bevy::pbr::{ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline, MaterialPipeline, NotShadowReceiver};
+use bevy::render::globals::GlobalsBuffer;
 use bevy::render::mesh::{MeshVertexAttribute, MeshVertexBufferLayout};
 use bevy::render::primitives::Aabb;
 use bevy::render::render_asset::RenderAssetUsages;
@@ -21,29 +22,34 @@ use bevy::{prelude::*, render::{render_resource::{PrimitiveTopology, Face}, mesh
 use noise::{Perlin, NoiseFn};
 use rand::{thread_rng, Rng};
 
+use crate::mask::Mask;
+
+use super::map::{HeightMap, MapData};
+
 // Grass constants
-const GRASS_TILE_SIZE_1: f32 = 32.;
+const GRASS_SCALER: f32 = 0.05;
+const GRASS_TILE_SIZE_1: f32 = 32. * GRASS_SCALER;
 const GRASS_TILE_SIZE_2: f32 = 32.; // TODO: like terrain, this causes overlaps if bigger than SIZE_1
 const NUM_GRASS_1: u32 = 128; // number of grass blades in one row of a tile
 const NUM_GRASS_2: u32 = 32;
 const GRASS_BLADE_VERTICES: u32 = 3;
-const GRASS_WIDTH: f32 = 0.3;
-const GRASS_HEIGHT: f32 = 2.4;
+const GRASS_WIDTH: f32 = 0.3 * GRASS_SCALER;
+const GRASS_HEIGHT: f32 = 2.4 * GRASS_SCALER;
 const GRASS_BASE_COLOR_1: [f32;4] = [0.102,0.153,0.,1.];
 const GRASS_BASE_COLOR_2: [f32;4] = [0.,0.019,0.,1.];
 pub const GRASS_SECOND_COLOR: [f32;4] = [0.079,0.079,0.,1.];
 const GRASS_SCALE_FACTOR: f32 = 1.0;
-const GRASS_HEIGHT_VARIATION_FACTOR: f32 = 0.2;
+const GRASS_HEIGHT_VARIATION_FACTOR: f32 = 0.2 * GRASS_SCALER;
 const GRASS_STRAIGHTNESS: f32 = 10.0; // for now, as opposed to a curve factor, just modifying denominator for curve calcs
 const GRASS_SPACING: f32 = 0.3;
-const GRASS_OFFSET: f32 = 0.2;
+const GRASS_OFFSET: f32 = 0.2 * GRASS_SCALER;
 const ENABLE_WIREFRAME: bool = false;
 const WIND_STRENGTH: f32 = 1.;
 const WIND_SPEED: f64 = 0.5;
 const WIND_CONSISTENCY: f64 = 50.0; //
 const WIND_LEAN: f32 = 0.0; // determines how already bent grass will be at 0 wind
 const CURVE_POWER: f32 = 1.0; // the linearity / exponentiality of the application/bend of the wind
-const DESPAWN_DISTANCE: f32 = (GRID_SIZE_HALF+1) as f32 * GRASS_TILE_SIZE_1 + GRID_SIZE_HALF as f32;
+const DESPAWN_DISTANCE: f32 = 10.0;
 const WIND_SIM_TRIGGER_DISTANCE: f32 = 3. * GRASS_TILE_SIZE_1;
 const WIND_SIM_DISTANCE: f32 = WIND_SIM_TRIGGER_DISTANCE - GRASS_TILE_SIZE_1/2.;
 
@@ -51,7 +57,7 @@ const ATTRIBUTE_BASE_Y: MeshVertexAttribute = MeshVertexAttribute::new("BaseY", 
 const ATTRIBUTE_STARTING_POSITION: MeshVertexAttribute = MeshVertexAttribute::new("StartingPosition", 988540916, VertexFormat::Float32x3);
 const ATTRIBUTE_WORLD_POSITION: MeshVertexAttribute = MeshVertexAttribute::new("WorldPosition", 988540915, VertexFormat::Float32x3);
 
-const GRID_SIZE_HALF: i32 = 8;
+const GRID_SIZE_HALF: i32 = 32;
 
 #[derive(Component)]
 pub struct ContainsPlayer(pub bool);
@@ -86,6 +92,9 @@ pub fn generate_grass_mesh(
     spawn_z: f32,
     density: u32,
     tile_size: f32,
+    heightmap: &HeightMap,
+    mask: &Mask,
+    mapsize: f32
 ) -> (Mesh, GrassData) {
     let mut grass_offsets = vec![];
     let mut rng = thread_rng();
@@ -107,12 +116,32 @@ pub fn generate_grass_mesh(
             let rand2 = if GRASS_OFFSET!=0.0 {rng.gen_range(-GRASS_OFFSET..GRASS_OFFSET)} else {0.0};
             let x_offset = x + rand1;
             let z_offset = z + rand2;
+
+            let x_sample = (spawn_x + x_offset) / mapsize;
+            let z_sample = (spawn_z + z_offset) / mapsize;
             // TODO
-            let y = 0.0;
+            let Some(y) = heightmap.height_at_checked(
+                x_sample,
+                z_sample
+            ) else {
+                continue;
+            };
+            let Some(spawnable) = mask.sample_at_checked(
+                x_sample,
+                z_sample
+            ) else {
+                continue;
+            };
+            if spawnable < 0.5 {
+                continue;
+            }
+            let y = y * mapsize;
             //let y = sample_terrain_height(&terrain_perlin, spawn_x + x_offset, spawn_z + z_offset) - 0.2; // minus small amount to avoid floating
             let blade_height = GRASS_HEIGHT + (height_perlin.get([(spawn_x + x_offset) as f64, (spawn_z + z_offset) as f64]) as f32 * GRASS_HEIGHT_VARIATION_FACTOR);
             //if y > terrain::HEIGHT_TEMPERATE_START && y < terrain::HEIGHT_TEMPERATE_END {
                 let (mut verts, mut indices) = generate_single_blade_verts(x_offset, y, z_offset, blade_number, blade_height);
+                if verts.len() == 0 {
+                }
                 for v in &verts {
                     grass_offsets.push([spawn_x + x_offset,y,spawn_z + z_offset]);
                     let r_color_shift = 0.0;
@@ -127,7 +156,6 @@ pub fn generate_grass_mesh(
             //}
         }
     }
-
     generate_grass_geometry(&all_verts, all_indices, &mut mesh, &grass_offsets, all_colors);
 
     (
@@ -154,6 +182,9 @@ pub fn generate_grass(
     spawn_z: f32,
     density: u32,
     tile_size: f32,
+    heightmap: &HeightMap,
+    mask: &Mask,
+    mapsize: f32
 ) -> (
     Handle<ExtendedMaterial<StandardMaterial, GrassMaterialExtension>>,
     Handle<Mesh>,
@@ -162,7 +193,7 @@ pub fn generate_grass(
     GrassData    
 )
 {
-    let (mesh, grass_data) = generate_grass_mesh(spawn_x, spawn_z, density, tile_size);
+    let (mesh, grass_data) = generate_grass_mesh(spawn_x, spawn_z, density, tile_size, heightmap, mask, mapsize);
 
     let grass_material_ext = GrassMaterialExtension {
     };
@@ -275,12 +306,17 @@ fn update_grass(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial,GrassMaterialExtension>>>,
+    mut materials2: ResMut<Assets<StandardMaterial>>,
     mut grass: Query<(Entity, &Mesh3d, &GrassData, &Transform, &ViewVisibility, &mut ContainsPlayer), With<Grass>>,
     mut grid: Query<&mut GrassGrid>,
+    heightmap: Res<HeightMap>,
+    mask: Res<BushMask>,
     //perlin: Res<PerlinNoiseEntity>,
     time: Res<Time>,
     player: Query<(Entity,&Transform),With<Camera>>,
+    mapdata: Res<MapData>
 ) {
+    let mapsize = mapdata.size;
     let (plyr_e, player_trans) = player.get_single().unwrap();
     let x = player_trans.translation.x;
     let z = player_trans.translation.z;
@@ -293,11 +329,12 @@ fn update_grass(
                 let b = z + j as f32 * GRASS_TILE_SIZE_1;
                 grass_grid.0.insert((a as i32, b as i32), true);
                 let contains_player = (player_trans.translation.x - a).abs() < GRASS_TILE_SIZE_1/2. && (player_trans.translation.z - b).abs() < GRASS_TILE_SIZE_1/2.;
-                let color = if contains_player { Color::srgb(1.0, 0.0, 0.0) } else { Color::srgb(1.0, 1.0, 0.0) };
-                let (mat, mesh, transform, main_grass, main_data) = generate_grass(&mut meshes, &mut materials, a, b, NUM_GRASS_1, GRASS_TILE_SIZE_1);
+                let (mat, mesh, transform, main_grass, main_data) = generate_grass(&mut meshes, &mut materials, a, b, NUM_GRASS_1, GRASS_TILE_SIZE_1, &heightmap, &mask.0, mapsize);
                 commands.spawn((
                     MeshMaterial3d(mat),
+                    //Mesh3d(meshes.add(Cuboid::from_length(10.0))),
                     Mesh3d(mesh),
+                    //Transform::from_xyz(30.0, 5.0, 20.0),
                     transform,
                     main_grass,
                     main_data,
@@ -306,12 +343,14 @@ fn update_grass(
             }
         }
         commands.spawn(grass_grid);
-    } else {
+    } 
+    else {
         let thread_pool = AsyncComputeTaskPool::get();
         let mut grass_grid = grid.get_single_mut().unwrap();
         let elapsed_time = time.elapsed_secs_f64();
         let mut grass_w_player: Option<Entity> = None;
         for (ent, mh, grass_data, grass_trans, visibility, mut contains_player) in grass.iter_mut() {
+            let is_outside_draw_distance = (player_trans.translation.x - grass_trans.translation.x).abs() > DESPAWN_DISTANCE || (player_trans.translation.z - grass_trans.translation.z).abs() > DESPAWN_DISTANCE;
             // remove or add ContainsPlayer if applicable
             if (player_trans.translation.x - grass_trans.translation.x).abs() >= GRASS_TILE_SIZE_1/2. || (player_trans.translation.z - grass_trans.translation.z).abs() >= GRASS_TILE_SIZE_1/2. {
                 if contains_player.0 {
@@ -325,15 +364,21 @@ fn update_grass(
                         for j in -GRID_SIZE_HALF..=GRID_SIZE_HALF {
                             let a = grass_trans.translation.x + i as f32 * GRASS_TILE_SIZE_1;
                             let b = grass_trans.translation.z + j as f32 * GRASS_TILE_SIZE_1;
-                            if let false = *grass_grid.0.get(&(a as i32,b as i32)).unwrap_or(&false) {
+                                let is_outside_draw_distance = (player_trans.translation.x - a).abs() > DESPAWN_DISTANCE || (player_trans.translation.z - b).abs() > DESPAWN_DISTANCE;
+                                if is_outside_draw_distance {
+                                    continue;
+                                }
+                                if let false = *grass_grid.0.get(&(a as i32,b as i32)).unwrap_or(&false) {
                                 grass_grid.0.insert((a as i32, b as i32), true);
                                 // todo: async way
                                 let transform = Transform::from_xyz(a,0.,b);
     
                                 let task_entity = commands.spawn_empty().id();
+                                let height_map = heightmap.clone();
+                                let mask = mask.0.clone();
                                 let task = thread_pool.spawn(async move {
                                     let mut command_queue = CommandQueue::default();
-                                    let (mesh, grass_data) = generate_grass_mesh(a, b, NUM_GRASS_1, GRASS_TILE_SIZE_1);
+                                    let (mesh, grass_data) = generate_grass_mesh(a, b, NUM_GRASS_1, GRASS_TILE_SIZE_1, &height_map, &mask, mapsize);
     
                                     command_queue.push(move |world: &mut World| {
                                         let (grass_mesh_handle, grass_mat_handle) = {
@@ -345,6 +390,7 @@ fn update_grass(
                                                 extension: GrassMaterialExtension {}
                                             }))
                                         };
+
                                         world.entity_mut(task_entity)
                                             .insert((
                                                 Mesh3d(grass_mesh_handle),
@@ -383,7 +429,7 @@ fn update_grass(
                 // if let Some(mesh) = meshes.get_mut(mh) {
                 //     apply_wind(mesh, grass_data, &perlin, elapsed_time, player_trans.translation.xz());
                 // }
-            } else if (player_trans.translation.x - grass_trans.translation.x).abs() > DESPAWN_DISTANCE || (player_trans.translation.z - grass_trans.translation.z).abs() > DESPAWN_DISTANCE {
+            } else if is_outside_draw_distance  {
                 grass_grid.0.insert((grass_trans.translation.x as i32, grass_trans.translation.z as i32), false);
                 commands.get_entity(ent).unwrap().despawn_recursive();
             }
@@ -465,6 +511,8 @@ impl MaterialExtension for GrassMaterialExtension {
         "grass_shader.wgsl".into()
     }
 
+    
+
     // fn fragment_shader() -> ShaderRef {
     //     "shaders/grass_shader.wgsl".into()
     // }
@@ -486,6 +534,7 @@ impl MaterialExtension for GrassMaterialExtension {
                 color_position = 7;
             }
         }
+
         let vertex_layout = layout.0.get_layout(&[
             Mesh::ATTRIBUTE_POSITION.at_shader_location(pos_position),
             Mesh::ATTRIBUTE_NORMAL.at_shader_location(normal_position),
@@ -501,11 +550,27 @@ impl MaterialExtension for GrassMaterialExtension {
     }
 }
 
+
 pub struct GrassPlugin;
 
 impl Plugin for GrassPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<ExtendedMaterial<StandardMaterial,GrassMaterialExtension>>::default());
+        app.add_plugins(MaterialPlugin::<ExtendedMaterial<StandardMaterial,GrassMaterialExtension>>{
+            prepass_enabled: false, // the current implementation is buggy with prepass enabled and i couldnt figure out how to fix it
+            ..Default::default() // its something todo with the globals.time not being passed to the shader in the prepass stage
+        });
+        app.add_systems(Startup, init_mask);
         app.add_systems(Update, (update_grass,handle_tasks));
     }
+}
+#[derive(Resource)]
+pub struct BushMask(Mask);
+pub fn init_mask(
+    mut commands: Commands,
+    mut materials2: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>
+) {
+    let mask = Mask::from_png("./assets/011/BushBlurred.png").unwrap();
+
+    commands.insert_resource(BushMask(mask));
 }

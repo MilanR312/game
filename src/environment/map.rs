@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, fs::File, io::Read, ops::BitOr, path::Path};
+use std::{f32::consts::PI, fs::File, io::Read, ops::BitOr, path::Path, sync::Arc};
 
 use bevy::{asset::RenderAssetUsages, image::{ImageAddressMode, ImageFilterMode, ImageFormatSetting, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, pbr::ExtendedMaterial, prelude::*, render::render_resource::{AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat, TextureUsages}};
 use bitflags::bitflags;
@@ -7,15 +7,15 @@ use image::{ImageBuffer, ImageReader, Rgba};
 use crate::{material::TerrainMaterialExtension};
 
 /// a heigthmap loaded from a raw file
-#[derive(Resource)]
-pub struct HeightMap(Vec<f32>, usize);
+#[derive(Resource, Clone)]
+pub struct HeightMap(Arc<[f32]>, usize); // the arc makes it cheap to clone
 impl HeightMap {
     pub fn from_file<T: AsRef<Path>>(path: T, size: usize) -> std::io::Result<Self> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
         let data: &[f32] = bytemuck::cast_slice(data.as_slice());
-        Ok(HeightMap(data.to_owned(), size))
+        Ok(HeightMap(data.to_owned().into_boxed_slice().into(), size))
     }
     /// sample the height at a specified coordinate
     pub fn height_at(&self, x: f32, y: f32) -> f32 {
@@ -23,6 +23,17 @@ impl HeightMap {
         let x = (x * width) as usize;
         let y = (y * width) as usize;
         self.0[y * self.1 + x]
+    }
+    pub fn height_at_checked(&self, x: f32, y: f32) -> Option<f32> {
+        if (x < 0.0 || x > 1.0) { return None; }
+        if (y < 0.0 || y > 1.0) { return None; }
+        let width = self.1 as f32;
+        let x = (x * width) as usize;
+        let y = (y * width) as usize;
+        self.0.get(y * self.1 + x).copied()
+    }
+    pub fn size(&self) -> f32 {
+        self.1 as f32
     }
 }
 
@@ -160,7 +171,7 @@ pub fn load_map(
     let world_size = 100.0;
 
     // get the first mesh of a glb file, the map is stored as a glb since it needs tangents for the material. Obj files dont support tangents
-    let ground = asset_server.load::<Mesh>("011/mesh.glb#Mesh0/Primitive0");
+    let ground = asset_server.load::<Mesh>("011/mesh3.glb#Mesh0/Primitive0");
     let world_transform = Transform::default()
         .with_rotation(
            Quat::from_rotation_x(PI/2.0)
@@ -207,10 +218,11 @@ pub fn load_map(
                 ..Default::default()
             },
             extension: TerrainMaterialExtension {
-                textures: asset_server.load("textures/textures/texture.ktx2"),
-                normals: asset_server.load("textures/textures/normals.ktx2"),
-                parallax: asset_server.load("textures/textures/displacment.ktx2"),
-                splatmap: images.add(bevy_image)
+                textures: asset_server.load("012/texture.ktx2"),
+                normals: asset_server.load("012/normals.ktx2"),
+                parallax: asset_server.load("012/displacment.ktx2"),
+                splatmap: images.add(bevy_image),
+                filtered_splatmap: asset_server.load("test.png")
             }
         })),
         world_transform.clone()

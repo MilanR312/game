@@ -1,17 +1,35 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::{BufReader, Read}, path::Path, sync::Arc};
 
+use bevy::ecs::system::Resource;
+use image::GenericImageView;
 use rand::{rng, rngs::ThreadRng, Rng};
 
 
 /// A mask used for tree placement loaded from a raw file
-pub struct Mask(Vec<f32>, usize);
+#[derive(Debug, Resource, Clone)]
+pub struct Mask(Arc<[f32]>, usize);
 impl Mask {
     pub fn from_file<T: AsRef<Path>>(path: T, size: usize) -> std::io::Result<Self> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
         let data: &[f32] = bytemuck::cast_slice(data.as_slice());
-        Ok(Self(data.to_owned(), size))
+        Ok(Self(data.to_owned().into_boxed_slice().into(), size))
+    }
+    pub fn from_png<T: AsRef<Path>>(path: T) -> std::io::Result<Self>{
+        let reader = BufReader::new(File::open(path)?);
+        let mut image = image::ImageReader::new(reader);
+        image.set_format(image::ImageFormat::Png);
+        let img = image.decode().unwrap();
+        let size = img.width() as usize;
+        let raw_data = img.into_bytes();
+        let raw_data: Arc<[f32]> = raw_data.chunks_exact(4).map(|x| x[0] as f32 / 255.0).collect();
+        //let raw_data = img.into_bytes().into_iter().map(|x| x as f32 / 255.0);
+        assert_eq!(raw_data.len(), size * size);
+        Ok(Self {
+            0: raw_data,
+            1: size
+        })
     }
     pub fn sample_at(&self, x: f32, y: f32) -> f32 {
         let width = self.1 as f32;
@@ -19,6 +37,14 @@ impl Mask {
         let iy = (y * width) as usize;
         debug_assert!(iy * self.1 + ix < self.0.len(), "index ({x},{y}) out of bounds ({ix}, {iy})->({})", iy * self.1 + ix);
         self.0[iy * self.1 + ix]
+    }
+    pub fn sample_at_checked(&self, x: f32, y: f32) -> Option<f32> {
+        if x < 0.0 || x > 1.0 { return None; }
+        if y < 0.0 || y > 1.0 { return None; }
+        let width = self.1 as f32;
+        let ix = (x * width) as usize;
+        let iy = (y * width) as usize;
+        self.0.get(iy * self.1 + ix).copied()
     }
 }
 

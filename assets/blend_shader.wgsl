@@ -9,6 +9,7 @@
     pbr_functions::SampleBias,
     mesh_view_bindings::view,
     //pbr_parallax_mapping::parallaxed_uv
+    prepass_utils::prepass_depth
 }
 
 #ifdef PREPASS_PIPELINE
@@ -153,27 +154,102 @@ fn parallaxed_uv(
 
 
 
+fn permute_four(x: vec4<f32>) -> vec4<f32> { return ((x * 34. + 1.) * x) % vec4<f32>(289.); }
+fn fade_two(t: vec2<f32>) -> vec2<f32> { return t * t * t * (t * (t * 6. - 15.) + 10.); }
+
+fn perlin_noise_2d(P: vec2<f32>) -> f32 {
+  var Pi: vec4<f32> = floor(P.xyxy) + vec4<f32>(0., 0., 1., 1.);
+  let Pf = fract(P.xyxy) - vec4<f32>(0., 0., 1., 1.);
+  Pi = Pi % vec4<f32>(289.); // To avoid truncation effects in permutation
+  let ix = Pi.xzxz;
+  let iy = Pi.yyww;
+  let fx = Pf.xzxz;
+  let fy = Pf.yyww;
+  let i = permute_four(permute_four(ix) + iy);
+  var gx: vec4<f32> = 2. * fract(i * 0.0243902439) - 1.; // 1/41 = 0.024...
+  let gy = abs(gx) - 0.5;
+  let tx = floor(gx + 0.5);
+  gx = gx - tx;
+  var g00: vec2<f32> = vec2<f32>(gx.x, gy.x);
+  var g10: vec2<f32> = vec2<f32>(gx.y, gy.y);
+  var g01: vec2<f32> = vec2<f32>(gx.z, gy.z);
+  var g11: vec2<f32> = vec2<f32>(gx.w, gy.w);
+  let norm = 1.79284291400159 - 0.85373472095314 *
+      vec4<f32>(dot(g00, g00), dot(g01, g01), dot(g10, g10), dot(g11, g11));
+  g00 = g00 * norm.x;
+  g01 = g01 * norm.y;
+  g10 = g10 * norm.z;
+  g11 = g11 * norm.w;
+  let n00 = dot(g00, vec2<f32>(fx.x, fy.x));
+  let n10 = dot(g10, vec2<f32>(fx.y, fy.y));
+  let n01 = dot(g01, vec2<f32>(fx.z, fy.z));
+  let n11 = dot(g11, vec2<f32>(fx.w, fy.w));
+  let fade_xy = fade_two(Pf.xy);
+  let n_x = mix(vec2<f32>(n00, n01), vec2<f32>(n10, n11), vec2<f32>(fade_xy.x));
+  let n_xy = mix(n_x.x, n_x.y, fade_xy.y);
+  return 2.3 * n_xy;
+}
+
+
 @group(2) @binding(100)
 var splatmap: texture_2d<u32>;
 @group(2) @binding(101)
 var splatmap_sampler: sampler;
+
 @group(2) @binding(102)
-var texture_array: texture_2d_array<f32>;
+var filtered_splatmap: texture_2d<f32>;
 @group(2) @binding(103)
-var array_sampler: sampler;
+var filtered_splatmap_sampler: sampler;
 
 @group(2) @binding(104)
-var normal_array: texture_2d_array<f32>;
+var texture_array: texture_2d_array<f32>;
 @group(2) @binding(105)
-var normal_sampler: sampler;
+var array_sampler: sampler;
 
 @group(2) @binding(106)
-var parallax_array: texture_2d_array<f32>;
+var normal_array: texture_2d_array<f32>;
 @group(2) @binding(107)
+var normal_sampler: sampler;
+
+@group(2) @binding(108)
+var parallax_array: texture_2d_array<f32>;
+@group(2) @binding(109)
 var parallax_sampler: sampler;
 
 //@group(2) @binding(108)
 //var<uniform> parallax_depths: array<f32>;
+
+
+fn gaussian_blur(uv: vec2<f32>) -> vec4<f32> {
+    let offsets = array(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(-1.0,  0.0),
+        vec2<f32>(-1.0,  1.0),
+        vec2<f32>( 0.0, -1.0),
+        vec2<f32>( 0.0,  0.0),
+        vec2<f32>( 0.0,  1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>( 1.0,  0.0),
+        vec2<f32>( 1.0,  1.0),
+    );
+    let kernel = array(
+        1.0 / 16.0,
+        2.0 / 16.0,
+        1.0 / 16.0,
+        2.0 / 16.0,
+        4.0 / 16.0,
+        2.0 / 16.0,
+        1.0 / 16.0,
+        2.0 / 16.0,
+        1.0 / 16.0,
+    );
+    var color = vec4<f32>(0.0);
+    for (var i = 0u; i < 9u; i = i + 1u) {
+        let sample_uv = uv + offsets[i];
+        color = color + textureSample(filtered_splatmap, filtered_splatmap_sampler, sample_uv) * kernel[i];
+    }
+    return color;
+}
 
 // code from https://github.com/ethereumdegen/bevy_mesh_terrain/blob/main/src/shaders/terrain.wgsl
 fn splat_sample(splat_uv: vec2f) -> Splat {
@@ -199,8 +275,10 @@ fn splat_sample(splat_uv: vec2f) -> Splat {
         i32(  clamped_splat_map_sample_coord_float_1.y   ),
     );
     let splat_index_values_at_pixel = textureLoad(splatmap, splat_map_sample_coord, 0);
+    let smooth_splat_index_values_at_pixel = textureSample(filtered_splatmap, filtered_splatmap_sampler, splat_uv);
+    //let smooth_splat_index_values_at_pixel = gaussian_blur(splat_uv);
     return Splat(
-        f32(splat_index_values_at_pixel.b) / 255.0,
+        f32(smooth_splat_index_values_at_pixel.b),
         splat_index_values_at_pixel.r,
         splat_index_values_at_pixel.g
     );
@@ -221,13 +299,17 @@ fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32
 @fragment
 fn fragment(
     in: VertexOutput,
+    @builtin(sample_index) sample_index: u32,
     @builtin(front_facing) is_front: bool,
 ) -> FragmentOutput {
-    let double_sided = (pbr_bindings::material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
-    // TODO: mip_bias https://raw.githubusercontent.com/bevyengine/bevy/refs/tags/v0.15.3/crates/bevy_pbr/src/render/pbr_fragment.wgsl
 
+    let double_sided = (pbr_bindings::material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
+
+    // make it so further out textures use the mipmap
+    // this needs to be done manually since we use 1 gian island mesh
+    let depth = prepass_depth(in.position, sample_index) * 1.0;
     var bias: SampleBias;
-    bias.mip_bias = view.mip_bias * 100.0;
+    bias.mip_bias = depth;
 
     var pbr_input = pbr_input_from_standard_material(in, is_front);
     let parallax_splat = splat_sample(in.uv);
@@ -247,25 +329,26 @@ fn fragment(
         -0.1,
         parallax_splat.splat
     );
-    let uvp_temp = parallaxed_uv(
-       pbr_bindings::material.parallax_depth_scale * scaler,
+    //let uvp_temp = parallaxed_uv(
+    //   pbr_bindings::material.parallax_depth_scale * scaler,
        //(parallax.r) * 0.1,
-       pbr_bindings::material.max_parallax_layer_count,
-       pbr_bindings::material.max_relief_mapping_search_steps,
-       uv,
-       -Vt,
-       parallax_splat
-    );
+    //   pbr_bindings::material.max_parallax_layer_count,
+    //   pbr_bindings::material.max_relief_mapping_search_steps,
+    //   uv,
+    //   -Vt,
+    //   parallax_splat
+    //);
+    let uvp_temp = uv;
     let splat = splat_sample(uvp_temp);
     let uvp = uvp_temp * 30.0 % 1;
-    let pos = in.world_position.xyz * 10.0 % 1;
+    var pos = in.world_position.xyz * 2.0 % 1; //+ vec3f(perlin_noise_2d(in.world_position.xz) * 0.02);
     //let uvp = in.uv;
     let color = mix(
         triplanar_sample(texture_array, array_sampler, pbr_input.N, pos, splat.index1, bias),
         triplanar_sample(texture_array, array_sampler, pbr_input.N, pos, splat.index2, bias),
         splat.splat
     );
-    // false, true, cond
+
     let normal = mix(
         triplanar_sample(normal_array, normal_sampler, pbr_input.N, pos, splat.index1, bias),
         triplanar_sample(normal_array, normal_sampler, pbr_input.N, pos, splat.index2, bias),
@@ -277,10 +360,11 @@ fn fragment(
 
     // we can optionally modify the input before lighting and alpha_discard is applied
     pbr_input.material.base_color = color;
-    //pbr_input.material.base_color = vec4(parallax.r, color.g, color.b, 1);
     pbr_input.N = normalize(pbr_input.N);
-    pbr_input.clearcoat_N = pbr_input.N;
-    //let TBN = calculate_tbn_mikktspace(pbr_input.world_normal, in.world_tangent);
+    pbr_input.clearcoat_N = pbr_input.clearcoat_N;
+    pbr_input.material.metallic = 0.2;
+    pbr_input.material.perceptual_roughness = 0.7;
+    
     pbr_input.N = apply_normal_mapping(
         pbr_input.material.flags,
         TBN,
@@ -313,5 +397,6 @@ fn fragment(
     // we can optionally modify the final result here
     //out.color = out.color * 2.0;
 #endif
+    //out.color = vec4f(splat.splat, 0, 0, 1.0);
     return out;
 }

@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{ScreenSpaceReflections, VolumetricFog}, prelude::*, window::CursorGrabMode};
+use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{ScreenSpaceReflections, VolumetricFog}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
@@ -101,7 +101,7 @@ pub fn move_camera(
             if keys.pressed(KeyCode::ShiftLeft) {
                 move_delta *= 3.0;
             }
-            move_delta *= time.delta_secs() * 10.0;
+            move_delta *= time.delta_secs() * 3.0;
             let rotation = transform.rotation;
             transform.translation += rotation * move_delta; // rotation transforms it from local space to camera orientation so z is forwards
         },
@@ -129,8 +129,8 @@ pub fn handle_others(
             }
         }
     }
-    if keys.pressed(KeyCode::KeyM) {
-        println!("at: {location:?}");
+    if keys.just_pressed(KeyCode::KeyM) {
+        println!("vec3({}, {}, {}),", location.translation.x, location.translation.y, location.translation.z);
     }
 }
 
@@ -155,6 +155,7 @@ pub fn spawn_camera(
             ..Default::default()
         },
         Tonemapping::TonyMcMapface,
+        DepthPrepass,
         CameraData {
             is_mouse_grabbed: true
         }, // grab the mouse at the start
