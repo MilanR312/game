@@ -5,6 +5,7 @@ use bevy::{asset::{io::Reader, AssetLoader, LoadContext, LoadState, RenderAssetU
 use bevy_atmosphere::{model::AtmosphereModel, plugin::{AtmosphereCamera, AtmospherePlugin}, prelude::{AtmosphereMut, Nishita}};
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_obj::ObjPlugin;
+use bevy_tweening::TweeningPlugin;
 use bevy_water::{material::{StandardWaterMaterial, WaterMaterial}, WaterPlugin, WaterSettings};
 use camera::CameraPlugin;
 use environment::EnvironmentPlugin;
@@ -42,6 +43,7 @@ fn main() -> eyre::Result<()> {
         .add_plugins(MaterialPlugin::<
             ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>
             >::default()) // register the custom material as an extension to the base material
+        .add_plugins(TweeningPlugin)
         .add_plugins(ObjPlugin) // load obj file loading
         .add_plugins(UiPlugin) // load our ui
         .add_plugins(SkyPlugin) // load sky related assets

@@ -10,6 +10,7 @@ bevy_egui = "0.33.0"
 bevy_hanabi = {git = "https://github.com/djeedai/bevy_hanabi"}
 bevy_obj = "0.15.1"
 bevy_rapier3d = "0.29.0"
+bevy_tweening = "0.12.0"
 bevy_water = "0.15.2"
 bitflags = "2.9.0"
 bytemuck = "1.22.0"

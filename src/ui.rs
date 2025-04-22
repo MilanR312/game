@@ -20,8 +20,10 @@ impl Plugin for UiPlugin {
 /// State of the ui kept as a component in the ECS
 #[derive(Resource, Default)]
 pub struct UIState{
-    pub sun_position: f32
+    pub sun_position: f32,
+    pub map_displayed: bool
 }
+
 
 /// egui is a rust alternatieve for dear imgui, it runs every frame and is used here to give use control of the suns location
 pub fn ui(
@@ -36,7 +38,8 @@ pub fn setup_ui(
     mut commands: Commands
 ) {
     commands.insert_resource(UIState{
-        sun_position: 0.5
+        sun_position: 0.5,
+        map_displayed: false
     });
     commands.spawn(
         PerfUiAllEntries::default()

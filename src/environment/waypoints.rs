@@ -1,13 +1,15 @@
-use crate::pathfinding::Graph;
-use bevy::{math::{vec3, vec3a, Vec3A}, prelude::*};
+use crate::{pathfinding::Graph, ui::UIState};
+use bevy::{math::{vec3, vec3a, Vec3A}, prelude::*, render::view::RenderLayers};
 
 use super::map::{HeightMap, MapData};
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
-pub struct PathGizmos{}
+pub struct InWorldPathGizmos{}
 
 #[derive(Component)]
 pub struct Route;
+
+
 
 pub fn spawn_waypoints(
     mut commands: Commands,
@@ -79,7 +81,7 @@ position(60.509605, 34.520927),
             Transform::from_translation(pos.into())
         ));
     }*/
-    let (gizmo_config, _) = config_store.config_mut::<PathGizmos>();
+    let (gizmo_config, _) = config_store.config_mut::<InWorldPathGizmos>();
     gizmo_config.depth_bias = 0.0;
     gizmo_config.line_width = 2.0;
     commands.insert_resource(Path(
@@ -116,16 +118,25 @@ pub fn calculate_path(
 pub struct Path(Option<CubicCurve<Vec3>>);
 pub fn draw_path(
     curve: Res<Path>,
-    mut gizmos: Gizmos<PathGizmos>
+    mut gizmos: Gizmos<InWorldPathGizmos>,
+    ui_state: ResMut<UIState>,
+    mut config_store: ResMut<GizmoConfigStore>,
 ) {
     let Some(curve) = &curve.0 else {
         return
     };
+    let (gizmo_config, _) = config_store.config_mut::<InWorldPathGizmos>();
+    if ui_state.map_displayed {
+        gizmo_config.depth_bias = -1.0;
+    } else {
+        gizmo_config.depth_bias = 0.0;
+    }
     let resolution = 100 * curve.segments().len();
     gizmos.linestrip(
         curve.iter_positions(resolution),
         Color::srgb(1.0, 0.0, 0.0)
     );
+
 }
 // for the path to look good we need at least
 // C1 continuity (actually G1 but C1 is a superset)

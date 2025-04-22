@@ -7,7 +7,7 @@ use trees::spawn_trees;
 use water::{spawn_ocean, spawn_rivers};
 
 mod trees;
-mod map;
+pub mod map;
 mod water;
 mod birds;
 mod waypoints;
@@ -24,20 +24,20 @@ impl Plugin for EnvironmentPlugin {
                 height: 1.9,
                 ..Default::default()
             })
-            .add_plugins(WaterPlugin)
+            //.add_plugins(WaterPlugin)
             .add_plugins(HanabiPlugin)
-            .add_plugins(grass::GrassPlugin)
-            .init_gizmo_group::<waypoints::PathGizmos>()
-            .add_systems(Startup, (
-                load_map,
-                waypoints::spawn_waypoints.after(load_map),
-                spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
-                spawn_trees.after(load_map), // they can still run in parallel so no chain is used
+            //.add_plugins(grass::GrassPlugin)
+            .init_gizmo_group::<waypoints::InWorldPathGizmos>()
+            /*.add_systems(Startup, (
+                //load_map,
+                //waypoints::spawn_waypoints.after(load_map),
+                //spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
+                //spawn_trees.after(load_map), // they can still run in parallel so no chain is used
                 //spawn_rivers.after(load_map),
                 //spawn_birds.after(load_map),
                 //fireflies::setup_fireflies
             ))
-            .add_systems(Update, (waypoints::draw_path, waypoints::calculate_path))
+            .add_systems(Update, (waypoints::draw_path, waypoints::calculate_path))*/
             //.add_systems(Update, (calculate_area_speed, bird_boids).chain()) // we need to calculate the area speed first so we chain the 2 updates so they run back to back
         ;
     }

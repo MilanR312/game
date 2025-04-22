@@ -1,13 +1,33 @@
-use std::f32::consts::FRAC_PI_2;
+use std::{f32::consts::FRAC_PI_2, time::Duration};
 
 use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{ScreenSpaceReflections, VolumetricFog}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
+use bevy_tweening::{lens::{TransformPositionLens, TransformRotationLens}, Animator, Lens, Tween};
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
 
+use crate::environment::map::MapData;
 
 
+struct TransformLens {
+    start: Transform,
+    end: Transform,
+}
 
+impl Lens<Transform> for TransformLens {
+    fn lerp(&mut self, target: &mut dyn bevy_tweening::Targetable<Transform>, ratio: f32) {
+        let mut position = TransformPositionLens {
+            start: self.start.translation,
+            end: self.end.translation
+        };
+        let mut rotation = TransformRotationLens {
+            start: self.start.rotation,
+            end: self.end.rotation
+        };
+        position.lerp(target, ratio);
+        rotation.lerp(target, ratio);
+    }
+}
 
 pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
@@ -23,11 +43,17 @@ impl Plugin for CameraPlugin {
 }
 
 // camera state currently only allows flying camera smoothed with velocity based inputs, this could also make use of rapiers physics engine in the future
-#[derive(Component)]
+#[derive(Component, Clone, Debug)]
 pub enum CameraType{
     Flying{
         v_yaw: f32,
         v_pitch: f32
+    },
+    MapMode {
+        prev_mode: Box<CameraType>,
+        prev_position: Transform,
+        mouse_position: Vec2,
+        old_projection: Projection
     }
 }
 
@@ -41,7 +67,8 @@ pub struct CameraData{
 pub fn rotate_camera(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
-    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>
+    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>,
+    mapdata: Res<MapData>
 ) {
     let delta = accumulated_mouse_motion.delta * time.delta_secs();
     const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
@@ -66,6 +93,11 @@ pub fn rotate_camera(
             *v_pitch -= v_pitch.signum() * REDUCE.clamp(0.0, v_pitch.abs()) * time.delta_secs();
             *v_yaw -= v_yaw.signum() * REDUCE.clamp(0.0, v_yaw.abs()) * time.delta_secs();
         },
+        CameraType::MapMode { mouse_position, .. } => {
+            let mapsize = mapdata.size;
+            *mouse_position += accumulated_mouse_motion.delta;
+            *mouse_position = mouse_position.clamp(Vec2::splat(- mapsize / 2.0), Vec2::splat(mapsize / 2.0));
+        }
         _ => {}
     }
 }
@@ -73,49 +105,61 @@ pub fn rotate_camera(
 pub fn move_camera(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>
+    camera: Single<(&mut Transform, &mut CameraType, &CameraData)>,
+    mapdata: Res<MapData>
 ) {
     let (mut transform, mut camera, data) = camera.into_inner();
+    let mut move_delta = Vec3::ZERO;
+    // keycodes make it work on querty and azerty
+    if keys.pressed(KeyCode::KeyW) {
+        move_delta.z -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        move_delta.z += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        move_delta.x += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        move_delta.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::Space) {
+        move_delta.y += 1.0;
+    }
+    if keys.pressed(KeyCode::ControlLeft) {
+        move_delta.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::ShiftLeft) {
+        move_delta *= 3.0;
+    }
+    move_delta *= time.delta_secs() * 3.0;
     match &mut *camera {
         CameraType::Flying { .. } if data.is_mouse_grabbed => {
-            let mut move_delta = Vec3::ZERO;
-            // keycodes make it work on querty and azerty
-            if keys.pressed(KeyCode::KeyW) {
-                move_delta.z -= 1.0;
-            }
-            if keys.pressed(KeyCode::KeyS) {
-                move_delta.z += 1.0;
-            }
-            if keys.pressed(KeyCode::KeyD) {
-                move_delta.x += 1.0;
-            }
-            if keys.pressed(KeyCode::KeyA) {
-                move_delta.x -= 1.0;
-            }
-            if keys.pressed(KeyCode::Space) {
-                move_delta.y += 1.0;
-            }
-            if keys.pressed(KeyCode::ControlLeft) {
-                move_delta.y -= 1.0;
-            }
-            if keys.pressed(KeyCode::ShiftLeft) {
-                move_delta *= 3.0;
-            }
-            move_delta *= time.delta_secs() * 3.0;
             let rotation = transform.rotation;
             transform.translation += rotation * move_delta; // rotation transforms it from local space to camera orientation so z is forwards
         },
+        CameraType::MapMode { prev_position, .. } => {
+            let center_of_world = mapdata.size / 2.0;
+            let rotation = transform.rotation;
+            transform.translation += rotation * move_delta.with_z(0.0);
+            //*transform = get_map_camera_position(*prev_position, center_of_world);
+        }
         _ => {}
     }
+}
+pub fn get_map_camera_position(player_pos: Transform, height: f32) -> Transform {
+    Transform::from_translation(player_pos.translation.with_y(height))
+    .looking_at(player_pos.translation.with_y(0.0), Vec3::X)
 }
 // handle other keys like switching between captured inputs and later maybe other camera modes
 pub fn handle_others(
     keys: Res<ButtonInput<KeyCode>>,
-    camera: Single<(&mut CameraType, &mut CameraData, &Transform)>,
-    mut window: Single<&mut Window>
+    camera: Single<(&mut CameraType, &mut CameraData, &mut Transform, &mut Animator<Transform>, &mut Projection)>,
+    mut window: Single<&mut Window>,
+    mapdata: Res<MapData>
 ) {
-    let (cam, mut data, location) = camera.into_inner();
-    match &*cam {
+    let (mut cam, mut data, mut location, mut animator, mut projection) = camera.into_inner();
+    let new_mode = match &*cam {
         CameraType::Flying { .. } => {
             if keys.pressed(KeyCode::Enter) {
                 data.is_mouse_grabbed = true;
@@ -127,9 +171,52 @@ pub fn handle_others(
                 window.cursor_options.grab_mode = CursorGrabMode::None;
                 window.cursor_options.visible = true;
             }
+            if keys.pressed(KeyCode::KeyM) {
+                let center_of_map = mapdata.size / 2.0;
+                animator.set_tweenable(Tween::new(
+                    EaseFunction::QuadraticInOut, 
+                    Duration::from_secs(3), 
+                    TransformLens {
+                        start: *location,
+                        end: get_map_camera_position(*location, center_of_map)
+                    }
+                ));
+                let old_projection = std::mem::replace(projection.as_mut(), 
+                    Projection::Orthographic(OrthographicProjection::default_3d())
+                );
+                Some(CameraType::MapMode{
+                    prev_mode: Box::new(cam.clone()),
+                    prev_position: *location,
+                    mouse_position: Vec2::splat(center_of_map),
+                    old_projection
+                })
+            } else {
+                None
+            }
+        },
+        CameraType::MapMode{ prev_mode, prev_position, old_projection , .. } => {
+            window.cursor_options.grab_mode = CursorGrabMode::Confined;
+            window.cursor_options.visible = true;
+            if keys.pressed(KeyCode::KeyM) {
+                *projection = old_projection.clone();
+                animator.set_tweenable(Tween::new(
+                    EaseFunction::QuadraticInOut, 
+                    Duration::from_secs(3), 
+                    TransformLens {
+                        start: *location,
+                        end: *prev_position
+                    }
+                ));
+                Some(*prev_mode.clone())
+            } else {
+                None
+            }
         }
-    }
-    if keys.just_pressed(KeyCode::KeyM) {
+    };
+    if let Some(new_mode) = new_mode {
+        *cam = new_mode;
+    };
+    if keys.just_pressed(KeyCode::KeyP) {
         println!("vec3({}, {}, {}),", location.translation.x, location.translation.y, location.translation.z);
     }
 }
@@ -137,6 +224,7 @@ pub fn handle_others(
 pub fn spawn_camera(
     mut commands: Commands
 ) {
+    let initial_pos = Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y);
     commands.spawn((
         Camera3d::default(),
         AtmosphereCamera::default(), // enable atmosphere rendering
@@ -162,6 +250,10 @@ pub fn spawn_camera(
         VolumetricFog {
             ..Default::default()
         },
-        Transform::from_xyz(50.0, 30.0, -10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y) // and give it a default position
+        Animator::new(Tween::new(EaseFunction::Linear, Duration::from_millis(1), TransformLens{
+            start: initial_pos,
+            end: initial_pos
+        })),
+        initial_pos
     ));
 }
