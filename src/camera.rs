@@ -1,6 +1,6 @@
 use std::{f32::consts::FRAC_PI_2, time::Duration};
 
-use bevy::{core_pipeline::{bloom::Bloom, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{ScreenSpaceReflections, VolumetricFog}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
+use bevy::{core_pipeline::{bloom::Bloom, dof::DepthOfField, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, fxaa::Fxaa, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{FogVolume, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections, VolumetricFog, VolumetricFogSettings}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
 use bevy_tweening::{lens::{TransformPositionLens, TransformRotationLens}, Animator, Lens, Tween};
@@ -53,7 +53,6 @@ pub enum CameraType{
         prev_mode: Box<CameraType>,
         prev_position: Transform,
         mouse_position: Vec2,
-        old_projection: Projection
     }
 }
 
@@ -171,7 +170,7 @@ pub fn handle_others(
                 window.cursor_options.grab_mode = CursorGrabMode::None;
                 window.cursor_options.visible = true;
             }
-            if keys.pressed(KeyCode::KeyM) {
+            if keys.just_pressed(KeyCode::KeyM) {
                 let center_of_map = mapdata.size / 2.0;
                 animator.set_tweenable(Tween::new(
                     EaseFunction::QuadraticInOut, 
@@ -181,24 +180,20 @@ pub fn handle_others(
                         end: get_map_camera_position(*location, center_of_map)
                     }
                 ));
-                let old_projection = std::mem::replace(projection.as_mut(), 
-                    Projection::Orthographic(OrthographicProjection::default_3d())
-                );
+
                 Some(CameraType::MapMode{
                     prev_mode: Box::new(cam.clone()),
                     prev_position: *location,
                     mouse_position: Vec2::splat(center_of_map),
-                    old_projection
                 })
             } else {
                 None
             }
         },
-        CameraType::MapMode{ prev_mode, prev_position, old_projection , .. } => {
+        CameraType::MapMode{ prev_mode, prev_position , .. } => {
             window.cursor_options.grab_mode = CursorGrabMode::Confined;
             window.cursor_options.visible = true;
-            if keys.pressed(KeyCode::KeyM) {
-                *projection = old_projection.clone();
+            if keys.just_pressed(KeyCode::KeyM) {
                 animator.set_tweenable(Tween::new(
                     EaseFunction::QuadraticInOut, 
                     Duration::from_secs(3), 
@@ -235,19 +230,24 @@ pub fn spawn_camera(
         CameraType::Flying{ v_pitch: 0.0, v_yaw: 0.0 }, // start the camera as a flying cam
 
         //Msaa::Off, // disable MSAA
-        //TemporalAntiAliasing::default(), // but use TAA
+        //TemporalAntiAliasing{}, // but use TAA
         //DepthPrepass,
         //DeferredPrepass,
         //ScreenSpaceReflections::default(),
+        Msaa::Off,
+        TemporalAntiAliasing::default(),
         Bloom {
             ..Default::default()
         },
-        Tonemapping::TonyMcMapface,
+        Tonemapping::AcesFitted,
         DepthPrepass,
+        //DepthOfField::default(),
+        ScreenSpaceAmbientOcclusion::default(),
         CameraData {
             is_mouse_grabbed: true
         }, // grab the mouse at the start
         VolumetricFog {
+            ambient_intensity: 0.0,
             ..Default::default()
         },
         Animator::new(Tween::new(EaseFunction::Linear, Duration::from_millis(1), TransformLens{
@@ -256,4 +256,12 @@ pub fn spawn_camera(
         })),
         initial_pos
     ));
+    /*commands.spawn((
+        FogVolume{
+            absorption: 0.05,
+            ..Default::default()
+        },
+        Transform::from_xyz(50.0, 0.0, 50.0)
+            .with_scale(Vec3::splat(100.0))
+    ));*/
 }

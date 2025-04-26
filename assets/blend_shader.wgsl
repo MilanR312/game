@@ -31,7 +31,7 @@ struct Splat{
 }
 
 
-fn sample_depth_map(uv: vec2<f32>, splat: Splat) -> f32 {
+fn sample_depth_map(uv: vec2<f32>, splat: Splat, bias: SampleBias) -> f32 {
     // We use `textureSampleLevel` over `textureSample` because the wgpu DX12
     // backend (Fxc) panics when using "gradient instructions" inside a loop.
     // It results in the whole loop being unrolled by the shader compiler,
@@ -42,11 +42,17 @@ fn sample_depth_map(uv: vec2<f32>, splat: Splat) -> f32 {
     // the MIP level, so no gradient instructions are used, and we can use
     // sample_depth_map in our loop.
     // See https://stackoverflow.com/questions/56581141/direct3d11-gradient-instruction-used-in-a-loop-with-varying-iteration-forcing
-    return mix(
-        textureSampleLevel(parallax_array, parallax_sampler, uv, splat.index1, 0.0).r,
-        textureSampleLevel(parallax_array, parallax_sampler, uv, splat.index2, 0.0).r,
-        splat.splat
-    );
+    if bias.mip_bias < 0.01 {
+        return 0.0;
+    } else {
+        return textureSampleBias(parallax_array, parallax_sampler, uv, 0, 0.0).r;
+        //return mix(
+        //    textureSampleLevel(parallax_array, parallax_sampler, uv, splat.index1, bias.mip_bias).r,
+        //    textureSampleLevel(parallax_array, parallax_sampler, uv, splat.index2, bias.mip_bias).r,
+        //    splat.splat
+        //);
+
+    }
 }
 
 // An implementation of parallax mapping, see https://en.wikipedia.org/wiki/Parallax_mapping
@@ -59,7 +65,8 @@ fn parallaxed_uv(
     original_uv: vec2<f32>,
     // The vector from the camera to the fragment at the surface in tangent space
     Vt: vec3<f32>,
-    splat: Splat
+    splat: Splat, 
+    bias: SampleBias
 ) -> vec2<f32> {
     if max_layer_count < 1.0 {
         return original_uv;
@@ -87,7 +94,7 @@ fn parallaxed_uv(
     var delta_uv = depth_scale * layer_depth * Vt.xy * vec2(1.0, -1.0) / view_steepness;
 
     var current_layer_depth = 0.0;
-    var texture_depth = sample_depth_map(uv, splat);
+    var texture_depth = sample_depth_map(uv, splat, bias);
 
     // texture_depth > current_layer_depth means the depth map depth is deeper
     // than the depth the ray would be at this UV offset so the ray has not
@@ -95,10 +102,9 @@ fn parallaxed_uv(
     for (var i: i32 = 0; texture_depth > current_layer_depth && i <= i32(layer_count); i++) {
         current_layer_depth += layer_depth;
         uv += delta_uv;
-        texture_depth = sample_depth_map(uv, splat);
+        texture_depth = sample_depth_map(uv, splat, bias);
     }
-
-#ifdef RELIEF_MAPPING
+#ifndef RELIEF_MAPPING
     // Relief Mapping
     // ==============
     // "Refine" the rough result from Steep Parallax Mapping
@@ -113,7 +119,7 @@ fn parallaxed_uv(
     current_layer_depth -= delta_depth;
 
     for (var i: u32 = 0u; i < max_steps; i++) {
-        texture_depth = sample_depth_map(uv, splat);
+        texture_depth = sample_depth_map(uv, splat, bias);
 
         // Halve the deltas for the next step
         delta_uv *= 0.5;
@@ -137,7 +143,7 @@ fn parallaxed_uv(
     // may skip small details and result in writhing material artifacts.
     let previous_uv = uv - delta_uv;
     let next_depth = texture_depth - current_layer_depth;
-    let previous_depth = sample_depth_map(previous_uv, splat) - current_layer_depth + layer_depth;
+    let previous_depth = sample_depth_map(previous_uv, splat, bias) - current_layer_depth + layer_depth;
 
     let weight = next_depth / (next_depth - previous_depth);
 
@@ -145,7 +151,6 @@ fn parallaxed_uv(
 
     current_layer_depth += mix(next_depth, previous_depth, weight);
 #endif
-
     // Note: `current_layer_depth` is not returned, but may be useful
     // for light computation later on in future improvements of the pbr shader.
     return uv;
@@ -284,17 +289,63 @@ fn splat_sample(splat_uv: vec2f) -> Splat {
     );
 }
 
-fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32>, pos: vec3<f32>, idx: u32, bias: SampleBias) -> vec4<f32> {
+fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32>, world_pos: vec3f, pos: vec3<f32>, idx: u32, bias: SampleBias) -> vec4<f32> {
     let blend = abs(normal);
     let sum = blend.x + blend.y + blend.z;
     let weights = blend / vec3<f32>(sum);
-
-    let x_tex = textureSampleBias(texture, x, pos.yz, idx, bias.mip_bias);
-    let y_tex = textureSampleBias(texture, x, pos.xz, idx, bias.mip_bias);
-    let z_tex = textureSampleBias(texture, x, pos.xy, idx, bias.mip_bias);
+    let x_tex = sample_non_uniform(texture, x, world_pos.yz, pos.yz, idx, bias);
+    let y_tex = sample_non_uniform(texture, x, world_pos.xz, pos.xz, idx, bias);
+    let z_tex = sample_non_uniform(texture, x, world_pos.xy, pos.xy, idx, bias);
 
     return x_tex * weights.x + y_tex * weights.y + z_tex * weights.z;
 }
+
+fn hash4D(x: vec2f) -> vec4f
+{
+    // based on: pcg4 by Mark Jarzynski: http://www.jcgt.org/published/0009/03/02/
+    var v = vec4u(x.xyyx * 8192.0) * 1664525u + 1013904223u;
+
+    v += v.yzxy * v.wxyz;
+    v.x += v.y * v.w;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v.w += v.y * v.z;
+    
+    v.x += v.y * v.w;
+    v.w += v.y * v.z;
+    
+    v ^= v >> vec4u(16u);
+
+    return vec4(vec4f(v ^ (v >> vec4u(16u)))) * (1.0 / f32(0xffffffffu));
+}
+fn sum(v: vec3f) -> f32 {
+    return v.x + v.y + v.z;
+}
+fn sample_non_uniform(texture: texture_2d_array<f32>, x: sampler, world_pos: vec2f, uv: vec2f, idx: u32, bias: SampleBias) -> vec4f {
+    let noise = perlin_noise_2d(world_pos * 1.5);
+    let v = 0.6;
+
+    let y = (noise + 1.0) / 2.0;
+
+    let angle = mix(0.0, 0.3, y);
+    let rotb = mat2x2f(
+        cos(angle), sin(angle),
+        -sin(angle), cos(angle)
+    );
+    //let rot = mix(rota, rotb, y);
+    let offa = vec2f(0.0, 0.0);
+    let offb = sin(vec2f(0.5, 0.3)) * rotb;
+
+    let uv1 = (uv + offa) % 1;
+    let uv2 = (uv + offb) % 1;
+
+    let tex1 = textureSampleBias(texture, x, uv1, idx, bias.mip_bias);
+    let tex2 = textureSampleBias(texture, x, uv2, idx, bias.mip_bias);
+
+    return mix(tex1,tex2,0.0);
+}
+
+
 
 @fragment
 fn fragment(
@@ -310,6 +361,7 @@ fn fragment(
     let depth = prepass_depth(in.position, sample_index) * 1.0;
     var bias: SampleBias;
     bias.mip_bias = depth;
+    let world_pos = in.world_position.xyz;
 
     var pbr_input = pbr_input_from_standard_material(in, is_front);
     let parallax_splat = splat_sample(in.uv);
@@ -324,11 +376,7 @@ fn fragment(
     let N = TBN[2];
     let Vt = vec3(dot(V, T), dot(V, B), dot(V, N));
     // // TODO pass these as an array
-    let scaler = mix(
-        0.4,
-        -0.1,
-        parallax_splat.splat
-    );
+    let scaler = 1.0;
     //let uvp_temp = parallaxed_uv(
     //   pbr_bindings::material.parallax_depth_scale * scaler,
        //(parallax.r) * 0.1,
@@ -339,19 +387,33 @@ fn fragment(
     //   parallax_splat
     //);
     let uvp_temp = uv;
-    let splat = splat_sample(uvp_temp);
-    let uvp = uvp_temp * 30.0 % 1;
-    var pos = in.world_position.xyz * 2.0 % 1; //+ vec3f(perlin_noise_2d(in.world_position.xz) * 0.02);
+    var pos = in.world_position.xyz * 1.0 % 1; //+ vec3f(perlin_noise_2d(in.world_position.xz) * 0.02);
+    let parallaxed_at_pos = parallaxed_uv(
+        -0.03,
+        64.0,
+        8u,
+    //pbr_bindings::material.parallax_depth_scale * scaler,
+    //   pbr_bindings::material.max_parallax_layer_count,
+    //   pbr_bindings::material.max_relief_mapping_search_steps,
+       pos.xz,
+       -Vt,
+       parallax_splat,
+       bias
+    );
+    pos = vec3f(parallaxed_at_pos.x, pos.y, parallaxed_at_pos.y);
+    let splat = parallax_splat;
+    //pos = parallaxed_at_pos;
+    
     //let uvp = in.uv;
     let color = mix(
-        triplanar_sample(texture_array, array_sampler, pbr_input.N, pos, splat.index1, bias),
-        triplanar_sample(texture_array, array_sampler, pbr_input.N, pos, splat.index2, bias),
+        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index1, bias),
+        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index2, bias),
         splat.splat
     );
 
     let normal = mix(
-        triplanar_sample(normal_array, normal_sampler, pbr_input.N, pos, splat.index1, bias),
-        triplanar_sample(normal_array, normal_sampler, pbr_input.N, pos, splat.index2, bias),
+        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index1, bias),
+        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index2, bias),
         splat.splat
     ) * 2 - 1;
     //let normal = vec4f(0.0, 1.0, 0.0, 0.0);
@@ -362,8 +424,8 @@ fn fragment(
     pbr_input.material.base_color = color;
     pbr_input.N = normalize(pbr_input.N);
     pbr_input.clearcoat_N = pbr_input.clearcoat_N;
-    pbr_input.material.metallic = 0.2;
-    pbr_input.material.perceptual_roughness = 0.7;
+    pbr_input.material.metallic = 0.0;
+    pbr_input.material.perceptual_roughness = 0.9;
     
     pbr_input.N = apply_normal_mapping(
         pbr_input.material.flags,
@@ -397,6 +459,6 @@ fn fragment(
     // we can optionally modify the final result here
     //out.color = out.color * 2.0;
 #endif
-    //out.color = vec4f(splat.splat, 0, 0, 1.0);
+    
     return out;
 }

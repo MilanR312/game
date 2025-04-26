@@ -2,15 +2,25 @@
     skinning,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
-    mesh_view_bindings::globals,
+    
+    mesh_view_bindings::view,
     mesh_functions,
     morph::morph,
     view_transformations::position_world_to_clip
 }
 
+#ifndef PREPASS_PIPELINE
+#import bevy_pbr::{
+    mesh_view_bindings::globals,
+    forward_io::VertexOutput
+}
+#else
+#import bevy_render::globals::Globals
+#import bevy_pbr::prepass_io::VertexOutput
+@group(0) @binding(1) var<uniform> globals: Globals;
+#endif
 
 #import bevy_pbr::{
-    forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
 }
 
@@ -51,7 +61,8 @@ fn perlin_noise_2d(P: vec2<f32>) -> f32 {
   return 2.3 * n_xy;
 }
 
-
+#ifndef PREPASS_PIPELINE
+// forward pass vertex struct
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
 #ifdef VERTEX_POSITIONS
@@ -83,18 +94,48 @@ struct Vertex {
     @location(17) starting_position: vec3<f32>,
     @location(18) world_position: vec3<f32>
 };
+#else 
+// prepass vertex struct
+struct Vertex {
+    @builtin(instance_index) instance_index: u32,
+    @location(0) position: vec3<f32>,
 
-@vertex
-fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
+#ifdef VERTEX_UVS
+    @location(1) uv: vec2<f32>,
+#endif
+
+#ifdef VERTEX_UVS_B
+    @location(2) uv_b: vec2<f32>,
+#endif
+
+#ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
+    @location(3) normal: vec3<f32>,
+#ifdef VERTEX_TANGENTS
+    @location(4) tangent: vec4<f32>,
+#endif
+#endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+
+#ifdef SKINNED
+    @location(5) joint_indices: vec4<u32>,
+    @location(6) joint_weights: vec4<f32>,
+#endif
+
+#ifdef VERTEX_COLORS
+    @location(7) color: vec4<f32>,
+#endif
+
+#ifdef MORPH_TARGETS
+    @builtin(vertex_index) index: u32,
+#endif // MORPH_TARGETS
+    @location(16) base_y: f32,
+    @location(17) starting_position: vec3<f32>,
+    @location(18) world_position: vec3<f32>
+}
+#endif
+
+#ifndef PREPASS_PIPELINE
+fn regular_vertex(vertex_no_morph: Vertex, pos: vec3f) -> VertexOutput {
     var out: VertexOutput;
-
-    // calculation of wind and new x, y, z coords
-    let world_space_scaler = 5.0;
-    var noise = perlin_noise_2d(vec2<f32>(vertex_no_morph.world_position.x/world_space_scaler + globals.time * 0.5, vertex_no_morph.world_position.z/world_space_scaler + globals.time * 0.5));
-
-    var new_x = vertex_no_morph.starting_position.x + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
-    var new_y = vertex_no_morph.position.y;
-    var new_z = vertex_no_morph.starting_position.z + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
 
 #ifdef MORPH_TARGETS
     var vertex = morph_vertex(vertex_no_morph);
@@ -111,6 +152,7 @@ fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
     //var model = mesh_functions::get_model_matrix(vertex_no_morph.instance_index);
 #endif
 
+
 #ifdef VERTEX_NORMALS
 #ifdef SKINNED
     out.world_normal = skinning::skin_normals(model, vertex.normal);
@@ -125,7 +167,7 @@ fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
 #endif
 
 #ifdef VERTEX_POSITIONS
-    out.world_position = mesh_functions::mesh_position_local_to_world(model, vec4<f32>(vec3<f32>(new_x, new_y, new_z), 1.0));
+    out.world_position = mesh_functions::mesh_position_local_to_world(model, vec4<f32>(pos, 1.0));
     out.position = position_world_to_clip(out.world_position.xyz);
 #endif
 
@@ -159,3 +201,147 @@ fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
 
     return out;
 }
+#endif
+
+#ifdef PREPASS_PIPELINE
+fn vertex_prepass(vertex_no_morph: Vertex, pos: vec3f) -> VertexOutput {
+    var out: VertexOutput;
+
+#ifdef MORPH_TARGETS
+    var vertex = morph_vertex(vertex_no_morph);
+#else
+    var vertex = vertex_no_morph;
+#endif
+
+#ifdef SKINNED
+    var world_from_local = skinning::skin_model(vertex.joint_indices, vertex.joint_weights);
+#else // SKINNED
+    // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+    // See https://github.com/gfx-rs/naga/issues/2416
+    var world_from_local = mesh_functions::get_world_from_local(vertex_no_morph.instance_index);
+#endif // SKINNED
+
+    out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(pos, 1.0));
+    out.position = position_world_to_clip(out.world_position.xyz);
+#ifdef DEPTH_CLAMP_ORTHO
+    out.clip_position_unclamped = out.position;
+    out.position.z = min(out.position.z, 1.0);
+#endif // DEPTH_CLAMP_ORTHO
+
+#ifdef VERTEX_UVS_A
+    out.uv = vertex.uv;
+#endif // VERTEX_UVS_A
+
+#ifdef VERTEX_UVS_B
+    out.uv_b = vertex.uv_b;
+#endif // VERTEX_UVS_B
+
+#ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
+#ifdef SKINNED
+    out.world_normal = skinning::skin_normals(world_from_local, vertex.normal);
+#else // SKINNED
+    out.world_normal = mesh_functions::mesh_normal_local_to_world(
+        vertex.normal,
+        // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+        // See https://github.com/gfx-rs/naga/issues/2416
+        vertex_no_morph.instance_index
+    );
+#endif // SKINNED
+
+#ifdef VERTEX_TANGENTS
+    out.world_tangent = mesh_functions::mesh_tangent_local_to_world(
+        world_from_local,
+        vertex.tangent,
+        // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+        // See https://github.com/gfx-rs/naga/issues/2416
+        vertex_no_morph.instance_index
+    );
+#endif // VERTEX_TANGENTS
+#endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+
+#ifdef VERTEX_COLORS
+    out.color = vertex.color;
+#endif
+
+    // Compute the motion vector for TAA among other purposes. For this we need
+    // to know where the vertex was last frame.
+#ifdef MOTION_VECTOR_PREPASS
+
+    // Take morph targets into account.
+#ifdef MORPH_TARGETS
+
+#ifdef HAS_PREVIOUS_MORPH
+    let prev_vertex = morph_prev_vertex(vertex_no_morph);
+#else   // HAS_PREVIOUS_MORPH
+    let prev_vertex = vertex_no_morph;
+#endif  // HAS_PREVIOUS_MORPH
+
+#else   // MORPH_TARGETS
+    let prev_vertex = vertex_no_morph;
+#endif  // MORPH_TARGETS
+
+    // Take skinning into account.
+#ifdef SKINNED
+
+#ifdef HAS_PREVIOUS_SKIN
+    let prev_model = skinning::skin_prev_model(
+        prev_vertex.joint_indices,
+        prev_vertex.joint_weights,
+    );
+#else   // HAS_PREVIOUS_SKIN
+    let prev_model = mesh_functions::get_previous_world_from_local(prev_vertex.instance_index);
+#endif  // HAS_PREVIOUS_SKIN
+
+#else   // SKINNED
+    let prev_model = mesh_functions::get_previous_world_from_local(prev_vertex.instance_index);
+#endif  // SKINNED
+
+    out.previous_world_position = mesh_functions::mesh_position_local_to_world(
+        prev_model,
+        vec4<f32>(prev_vertex.position, 1.0)
+    );
+#endif // MOTION_VECTOR_PREPASS
+
+#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
+    // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+    // See https://github.com/gfx-rs/naga/issues/2416
+    out.instance_index = vertex_no_morph.instance_index;
+#endif
+
+    return out;
+}
+#endif
+
+
+
+@vertex
+fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
+    let dist = abs(view.world_position - vertex_no_morph.world_position);
+    let dist2 = dist.x * dist.x + dist.y * dist.y + dist.z * dist.z;
+    let dist_scaled = dist2 * 0.002;
+
+    // calculation of wind and new x, y, z coords
+    let world_space_scaler = 5.0;
+    var noise = perlin_noise_2d(vec2<f32>(vertex_no_morph.world_position.x/world_space_scaler + globals.time * 0.5, vertex_no_morph.world_position.z/world_space_scaler + globals.time * 0.5));
+
+    var new_x = vertex_no_morph.starting_position.x + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
+    var new_y = vertex_no_morph.position.y;
+    var new_z = vertex_no_morph.starting_position.z + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
+
+    let pos = vec3f(new_x, new_y, new_z);
+
+    #ifndef PREPASS_PIPELINE
+    return regular_vertex(vertex_no_morph, pos);
+    #else
+    return vertex_prepass(vertex_no_morph, pos);
+    #endif
+}
+
+
+
+
+
+
+
+
+

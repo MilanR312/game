@@ -1,6 +1,6 @@
 use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, prelude::*, render::diagnostic::RenderDiagnosticsPlugin};
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use iyes_perf_ui::prelude::PerfUiAllEntries;
+use iyes_perf_ui::{prelude::PerfUiAllEntries, PerfUiPlugin};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -12,6 +12,7 @@ impl Plugin for UiPlugin {
                 SystemInformationDiagnosticsPlugin,
                 RenderDiagnosticsPlugin,
             ))
+            .add_plugins(PerfUiPlugin)
             .add_systems(Update, ui)
             .add_systems(Startup, setup_ui);
     }
@@ -30,9 +31,9 @@ pub fn ui(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UIState>,
 ) {
-    egui::Window::new("Test").show(contexts.ctx_mut(), |ui| {
+    /*egui::Window::new("Test").show(contexts.ctx_mut(), |ui| {
         ui.add(egui::Slider::new(&mut ui_state.sun_position, 0.0 ..= 6.24))
-    });
+    });*/
 }
 pub fn setup_ui(
     mut commands: Commands

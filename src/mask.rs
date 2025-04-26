@@ -52,15 +52,16 @@ impl Mask {
 /// a bluenoise generator that works on a mask
 /// 
 /// this allows random noise with minimum distance whilst also following a mask
-pub struct BlueNoise<'a>(fast_poisson::Iter<2>, &'a Mask);
-impl<'a> BlueNoise<'a>{
-    pub fn new(distance: f32, mask: &'a Mask) -> Self {
+#[derive(Resource)]
+pub struct BlueNoise(fast_poisson::Iter<2>, Mask);
+impl BlueNoise{
+    pub fn new(distance: f32, mask: Mask) -> Self {
         let iter = fast_poisson::Poisson::<2>::new()
             .with_dimensions([1.0, 1.0], distance as f64);   
         Self(iter.iter(), mask)
     }
 }
-impl Iterator for BlueNoise<'_> {
+impl Iterator for BlueNoise {
     type Item = [f32; 2];
     fn next(&mut self) -> Option<Self::Item> {
         let mut rng = rng();

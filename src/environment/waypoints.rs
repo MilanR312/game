@@ -116,21 +116,26 @@ pub fn calculate_path(
 }
 #[derive(Resource)]
 pub struct Path(Option<CubicCurve<Vec3>>);
-pub fn draw_path(
-    curve: Res<Path>,
-    mut gizmos: Gizmos<InWorldPathGizmos>,
+pub fn draw_settings(
     ui_state: ResMut<UIState>,
     mut config_store: ResMut<GizmoConfigStore>,
 ) {
-    let Some(curve) = &curve.0 else {
-        return
-    };
     let (gizmo_config, _) = config_store.config_mut::<InWorldPathGizmos>();
     if ui_state.map_displayed {
         gizmo_config.depth_bias = -1.0;
     } else {
         gizmo_config.depth_bias = 0.0;
     }
+}
+pub fn draw_path(
+    curve: Res<Path>,
+    mut gizmos: Gizmos<InWorldPathGizmos>,
+    
+) {
+    let Some(curve) = &curve.0 else {
+        return
+    };
+    
     let resolution = 100 * curve.segments().len();
     gizmos.linestrip(
         curve.iter_positions(resolution),

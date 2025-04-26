@@ -30,3 +30,24 @@ impl MaterialExtension for TerrainMaterialExtension {
         "blend_shader.wgsl".into()
     }
 }
+
+
+#[derive(Asset, AsBindGroup, Clone, TypePath)]
+pub struct TestMaterialExtension {
+    #[texture(104)]
+    #[sampler(105)]
+    pub textures: Handle<Image>,
+
+    #[texture(106)]
+    #[sampler(107)]
+    pub normals: Handle<Image>,
+
+    #[texture(108)]
+    #[sampler(109)]
+    pub parallax: Handle<Image>
+}
+impl MaterialExtension for TestMaterialExtension {
+    fn fragment_shader() -> ShaderRef {
+        "blend_shader2.wgsl".into()
+    }
+}
