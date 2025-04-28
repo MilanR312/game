@@ -33,19 +33,19 @@ impl Plugin for EnvironmentPlugin {
             .init_gizmo_group::<waypoints::InWorldPathGizmos>()
             .add_systems(Startup, (
                 load_map,
-                waypoints::spawn_waypoints.after(load_map),
+                //waypoints::spawn_waypoints.after(load_map),
                 //pois::spawn.after(load_map),
-                spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
+                //spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
                 //spawn_trees.after(load_map), // they can still run in parallel so no chain is used
                 //spawn_rivers.after(load_map),
                 //spawn_birds.after(load_map),
                 //fireflies::setup_fireflies
             ))
             .add_systems(Update, (
-                waypoints::draw_path, 
-                waypoints::calculate_path,
-                trees::set_visibility_and_merge_meshes,
-                map::generate_chunks
+                //waypoints::draw_path, 
+                //waypoints::calculate_path,
+                //trees::set_visibility_and_merge_meshes,
+                map::generate_chunks,
                 //map::generate_meshlet
             ))
 

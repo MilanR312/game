@@ -8,12 +8,13 @@ the amount of modifications is quite small
 
 
 use std::borrow::BorrowMut;
+use std::f32::consts::FRAC_PI_2;
 
 use bevy::ecs::system::{SystemState};
 use bevy::ecs::world::CommandQueue;
 use bevy::pbr::{ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline, MaterialPipeline, NotShadowCaster, NotShadowReceiver};
 use bevy::render::globals::GlobalsBuffer;
-use bevy::render::mesh::{Indices, MeshVertexAttribute, MeshVertexBufferLayout};
+use bevy::render::mesh::{Indices, MeshAabb, MeshVertexAttribute, MeshVertexBufferLayout};
 use bevy::render::primitives::Aabb;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::render_resource::{AsBindGroup, ColorTargetState, ColorWrites, GpuArrayBuffer, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError, VertexFormat};
@@ -37,8 +38,8 @@ const GRASS_BLADE_VERTICES: u32 = 3;
 const GRASS_WIDTH: f32 = 0.3 * GRASS_SCALER;
 const GRASS_HEIGHT: f32 = 1.2 * GRASS_SCALER;
 const GRASS_BASE_COLOR_1: [f32;4] = [0.102,0.153,0.,1.];
-const GRASS_BASE_COLOR_2: [f32;4] = [0.26,0.4,0.17,1.];
-pub const GRASS_SECOND_COLOR: [f32;4] = [0.26,0.4,0.17,1.];
+const GRASS_BASE_COLOR_2: [f32;4] = [28.0 / 255.0,38.0 / 255.0,14.0 / 255.0,1.];
+pub const GRASS_SECOND_COLOR: [f32;4] = [28.0 / 255.0,38.0 / 255.0,14.0 / 255.0,1.];
 const GRASS_SCALE_FACTOR: f32 = 1.0;
 const GRASS_HEIGHT_VARIATION_FACTOR: f32 = 0.2 * GRASS_SCALER;
 const GRASS_STRAIGHTNESS: f32 = 10.0; // for now, as opposed to a curve factor, just modifying denominator for curve calcs
@@ -99,17 +100,18 @@ pub fn generate_grass_items(
     height_map: Res<HeightMap>,
     grass: Res<BushMask>,
 ) {
-    let material: Handle<StandardMaterial> = asset_server.load("bushes/real_bush.glb#Material0");
+    let material: Handle<StandardMaterial> = asset_server.load("bushes/bushes_cleaned.glb#Material0");
 
     let bushes: [Handle<Mesh>; 2] = [
-        asset_server.load("bushes/real_bush.glb#Mesh0"),
-        asset_server.load("bushes/real_bush.glb#Mesh1"),
+        asset_server.load("bushes/bushes_cleaned.glb#Mesh0/Primitive0"),
+        asset_server.load("bushes/bushes_cleaned.glb#Mesh1/Primitive0"),
     ];
 
-    commands.spawn((
-        SceneRoot(asset_server.load("bushes/real_bush.glb")),
-        Transform::from_scale(Vec3::splat(100.0))
-    ));
+    /*commands.spawn((
+        SceneRoot(asset_server.load("bushes/bushes_cleaned.glb#Scene0")),
+        Transform::from_scale(Vec3::splat(1.0)),
+        GrassItem
+    ));*/
 
     let cube = meshes.add(Cuboid::from_length(0.5));
 
@@ -123,9 +125,14 @@ pub fn generate_grass_items(
         let bush_used = rng.random_range(0..bushes.len());
         let bush = &bushes[bush_used];
         let rand_transform = Transform::from_xyz(x * 100.0, height * 100.0, y * 100.0)
-            .with_rotation(Quat::from_rotation_y(local_rng.random_range(0.0..6.24)))
+            .with_rotation(
+                Quat::from_rotation_y(local_rng.random_range(0.0..6.24)) 
+                *
+                Quat::from_rotation_x(-FRAC_PI_2)
+                
+            )
             .with_scale(
-                Vec3::splat(100.0)
+                Vec3::splat(0.005)
                     * Vec3::new(
                         local_rng.random_range(0.9..1.1) ,
                         local_rng.random_range(0.9..1.1),
@@ -135,21 +142,20 @@ pub fn generate_grass_items(
         warn!("spawn at {rand_transform:?}");
         commands.spawn((
             rand_transform,
-            MeshMaterial3d(materials.add(Color::WHITE)),
-            //MeshMaterial3d(material.clone()),
+            //MeshMaterial3d(materials.add(Color::WHITE)),
+            MeshMaterial3d(material.clone()),
             Mesh3d(bush.clone()),
             GrassItem,
-            /*VisibilityRange {
+            VisibilityRange {
                 use_aabb: false,
                 start_margin: 0.0..0.0,
-                end_margin: 10.0..15.0
-            }*/
+                end_margin: 20.0..22.0
+            }
         ));
         cnt += 1;
     }
     info!("spawned {cnt} bushes");
 }
-
 
 
 pub fn generate_grass_mesh(

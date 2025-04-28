@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.15.3", features = ["dynamic_linking", "jpeg", "trace_tracy", "meshlet", "meshlet_processor" ,"file_watcher"] }
+bevy = { version = "0.15.3", features = ["dynamic_linking", "jpeg", "meshlet", "meshlet_processor" ,"file_watcher"] }
 bevy_asset_loader = "0.22.0"
 bevy_atmosphere = "0.12.2"
 bevy_egui = "0.33.0"
