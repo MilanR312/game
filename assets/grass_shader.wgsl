@@ -322,11 +322,12 @@ fn vertex(vertex_no_morph: Vertex) -> VertexOutput {
 
     // calculation of wind and new x, y, z coords
     let world_space_scaler = 5.0;
+    let wind_scaler = 0.5;
     var noise = perlin_noise_2d(vec2<f32>(vertex_no_morph.world_position.x/world_space_scaler + globals.time * 0.5, vertex_no_morph.world_position.z/world_space_scaler + globals.time * 0.5));
 
-    var new_x = vertex_no_morph.starting_position.x + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
-    var new_y = vertex_no_morph.position.y;
-    var new_z = vertex_no_morph.starting_position.z + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 2.4);
+    var new_x = vertex_no_morph.starting_position.x + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 1.2) * wind_scaler;
+    var new_y = vertex_no_morph.position.y - dist_scaled;
+    var new_z = vertex_no_morph.starting_position.z + noise * ((vertex_no_morph.position.y-vertex_no_morph.base_y) / 1.2) * wind_scaler;
 
     let pos = vec3f(new_x, new_y, new_z);
 

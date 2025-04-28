@@ -1,6 +1,6 @@
 use std::{f32::consts::FRAC_PI_2, time::Duration};
 
-use bevy::{core_pipeline::{bloom::Bloom, dof::DepthOfField, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, fxaa::Fxaa, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{FogVolume, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections, VolumetricFog, VolumetricFogSettings}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
+use bevy::{core_pipeline::{bloom::Bloom, dof::DepthOfField, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, fxaa::Fxaa, motion_blur::MotionBlur, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{FogVolume, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections, VolumetricFog, VolumetricFogSettings}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::rapier::data;
 use bevy_tweening::{lens::{TransformPositionLens, TransformRotationLens}, Animator, Lens, Tween};
@@ -230,12 +230,10 @@ pub fn spawn_camera(
         CameraType::Flying{ v_pitch: 0.0, v_yaw: 0.0 }, // start the camera as a flying cam
 
         //Msaa::Off, // disable MSAA
-        //TemporalAntiAliasing{}, // but use TAA
-        //DepthPrepass,
-        //DeferredPrepass,
         //ScreenSpaceReflections::default(),
         Msaa::Off,
-        TemporalAntiAliasing::default(),
+        //MotionBlur::default(),
+        //TemporalAntiAliasing::default(),
         Bloom {
             ..Default::default()
         },

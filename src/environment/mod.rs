@@ -26,13 +26,10 @@ impl Plugin for EnvironmentPlugin {
                 height: 1.9,
                 ..Default::default()
             })
-            .add_plugins(MeshletPlugin {
-                cluster_buffer_slots: 2u32.pow(20)
-            })
             .init_collection::<Map>()
             .add_plugins(WaterPlugin)
             .add_plugins(HanabiPlugin)
-            //.add_plugins(grass::GrassPlugin)
+            .add_plugins(grass::GrassPlugin)
             .init_gizmo_group::<waypoints::InWorldPathGizmos>()
             .add_systems(Startup, (
                 load_map,

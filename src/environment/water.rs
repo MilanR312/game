@@ -14,6 +14,7 @@ pub fn spawn_ocean(
 ) {
     let world_size = 100.0;
     let plane = meshes.add(PlaneMeshBuilder::from_length(world_size * 10.0).subdivisions(18).build());
+    let plane_size = world_size * 10.0 - 0.01;
     let mat = materials.add(StandardWaterMaterial {
         base: default(),
         extension: WaterMaterial {
@@ -22,17 +23,22 @@ pub fn spawn_ocean(
           ..default()
         },
       });
+    let center_of_world = Vec3::new(world_size / 2.0, 0.0, world_size / 2.0);
     let plane2 = Plane3d::new(Vec3::Y, Vec2::splat(world_size) * 10.0);
-    for delta in [-1.0, 1.0]{
-        commands.spawn((
-            Mesh3d(plane.clone()),
-            MeshMaterial3d(mat.clone()),
-            Transform::from_xyz(world_size / 2.0 + delta * world_size / 2.0, 2.0, world_size / 2.0)
-        ));
+    for delta_x in [-1.0, 1.0]{
+        for delta_z in [-1.0, 1.0] {
+            let dx = center_of_world.x + delta_x * plane_size / 2.0;
+            let dz = center_of_world.z + delta_z * plane_size / 2.0;
+            commands.spawn((
+                Mesh3d(plane.clone()),
+                MeshMaterial3d(mat.clone()),
+                Transform::from_xyz(dx, 2.0, dz)
+            ));
+        }
     }
     commands.spawn(( // the map is a limited size but if we look into the ocean this would look weird since its semi transparent
         Mesh3d(meshes.add(plane2)), // this adds a gigantic plane so that the map seems to continue even if it stops having any detail
-        MeshMaterial3d(materials2.add(Color::WHITE)),
+        MeshMaterial3d(materials2.add(Color::linear_rgb(75.0 / 255.0, 50.0/ 255.0, 39.0 / 255.0))),
         Transform::from_xyz(0.0, 0.1, 0.0)
     ));
 }

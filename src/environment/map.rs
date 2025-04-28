@@ -181,7 +181,7 @@ pub struct Map{
 #[derive(Component)]
 pub enum MapLoadState{
     Gltf(Handle<Gltf>, MapLodType),
-    Chunk(Handle<GltfNode>),
+    Chunk(Handle<GltfNode>, MapLodType),
     MeshData(Handle<GltfMesh>)
 }
 #[derive(Resource)]
@@ -342,14 +342,14 @@ pub fn generate_chunks(
                 };
                 for node in &gltf.nodes {
                     commands.spawn((
-                        MapLoadState::Chunk(node.clone()),
+                        MapLoadState::Chunk(node.clone(), *x),
                         visibility_range.clone()
                     ));
                 }
                 commands.entity(entity)
                     .despawn();
             },
-            MapLoadState::Chunk(chunk) => {
+            MapLoadState::Chunk(chunk, lodtype) => {
                 let Some(node) = nodes.get(chunk.id()) else {
                     continue;
                 };
@@ -359,6 +359,13 @@ pub fn generate_chunks(
                 transform.translation.y *= 2.0;
                 transform.translation *= size.size;
                 transform.translation += Vec3::splat(size.size / 2.0).with_y(0.0);
+                let y_offset = match *lodtype { // due to the lower lods it can be possible that at an edge we could see under the map, to fix this we just make the distant chunks lower
+                    MapLodType::Main => 0.0, // with this we may see an unnatural bump but that is less noticable than a white hole in the ground
+                    MapLodType::Lod1 => -0.05,
+                    MapLodType::Lod2 => -0.1,
+                    MapLodType::Lod3 => -0.15,
+                };
+                transform.translation.y += y_offset;
 
                 commands.entity(entity)
                     .remove::<MapLoadState>()
