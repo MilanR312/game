@@ -38,7 +38,13 @@ fn main() -> eyre::Result<()> {
             render_creation: wgpu_settings.into(),
             synchronous_pipeline_compilation: false
         }
-    )/*.set(ImagePlugin::default_nearest())*/)
+    ).set(WindowPlugin{
+        primary_window: Some(Window { 
+            title: "A natural Scene".to_string(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    })/*.set(ImagePlugin::default_nearest())*/)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default()) // load the physics sym for the birds
         .add_plugins(MaterialPlugin::<
             ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>

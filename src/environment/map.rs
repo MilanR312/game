@@ -2,8 +2,10 @@ use std::{f32::consts::PI, fs::File, io::{BufReader, Read}, ops::BitOr, path::Pa
 
 use bevy::{asset::{io::{AssetSourceId, AssetSources, AssetWriter}, saver::{AssetSaver, SavedAsset}, ErasedLoadedAsset, LoadState, LoadedAsset, RenderAssetUsages}, gltf::{GltfMesh, GltfNode}, image::{ImageAddressMode, ImageFilterMode, ImageFormatSetting, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, pbr::{experimental::meshlet::{self, MeshToMeshletMeshConversionError, MeshletMesh, MeshletMesh3d, MeshletMeshSaver}, ExtendedMaterial}, prelude::*, render::{render_resource::{AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat, TextureUsages}, view::VisibilityRange}, tasks::block_on};
 use bevy_asset_loader::asset_collection::AssetCollection;
+use bevy_rapier3d::{na::Point, prelude::*, rapier::prelude::ColliderBuilder};
 use bitflags::bitflags;
 use image::{GenericImageView, ImageBuffer, ImageReader, Rgba};
+use itertools::Itertools;
 
 use crate::material::{TerrainMaterialExtension, TestMaterialExtension};
 
@@ -188,6 +190,7 @@ pub enum MapLoadState{
 pub struct MapMaterial(Handle<ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>>);
 
 
+
 pub fn load_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -296,11 +299,15 @@ pub fn load_map(
         }
     });
 
+
     commands.insert_resource(MapMaterial(handle));
 
     commands.insert_resource(heightmap);
 
 }
+#[derive(Component)]
+pub struct NeedsCollider;
+
 pub fn generate_chunks(
     mut commands: Commands,
     mut q: Query<(Entity, &mut MapLoadState)>,
@@ -384,11 +391,31 @@ pub fn generate_chunks(
                     .insert((
                         Visibility::Visible,
                         Mesh3d(mesh),
-                        MeshMaterial3d(map_material.0.clone())
+                        MeshMaterial3d(map_material.0.clone()),
+                        NeedsCollider
                     ));
                 
             }
             _ => {}
         }
+    }
+}
+pub fn insert_colliders(
+    mut commands: Commands,
+    meshes: Res<Assets<Mesh>>,
+    q: Query<(Entity, &Mesh3d), With<NeedsCollider>>
+) {
+    for (key, mesh) in q.iter(){
+        let Some(mesh) = meshes.get(mesh.id()) else {
+            continue;
+        };
+
+        let collider = Collider::from_bevy_mesh(mesh, &ComputedColliderShape::TriMesh(TriMeshFlags::MERGE_DUPLICATE_VERTICES)).unwrap();
+
+        commands.entity(key)
+            .insert(
+                collider
+            ).remove::<NeedsCollider>();
+
     }
 }

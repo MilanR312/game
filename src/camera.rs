@@ -2,11 +2,11 @@ use std::{f32::consts::FRAC_PI_2, time::Duration};
 
 use bevy::{core_pipeline::{bloom::Bloom, dof::DepthOfField, experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing}, fxaa::Fxaa, motion_blur::MotionBlur, prepass::DepthPrepass, tonemapping::Tonemapping}, input::{keyboard::KeyboardInput, mouse::AccumulatedMouseMotion}, pbr::{FogVolume, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections, VolumetricFog, VolumetricFogSettings}, prelude::*, render::camera::MipBias, text::cosmic_text::ttf_parser::loca, window::CursorGrabMode};
 use bevy_atmosphere::plugin::AtmosphereCamera;
-use bevy_rapier3d::rapier::data;
+use bevy_rapier3d::prelude::*;
 use bevy_tweening::{lens::{TransformPositionLens, TransformRotationLens}, Animator, Lens, Tween};
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
 
-use crate::environment::map::MapData;
+use crate::environment::{map::MapData, waypoints::Route};
 
 
 struct TransformLens {
@@ -153,11 +153,14 @@ pub fn get_map_camera_position(player_pos: Transform, height: f32) -> Transform 
 // handle other keys like switching between captured inputs and later maybe other camera modes
 pub fn handle_others(
     keys: Res<ButtonInput<KeyCode>>,
-    camera: Single<(&mut CameraType, &mut CameraData, &mut Transform, &mut Animator<Transform>, &mut Projection)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    camera: Single<(&mut CameraType, &mut CameraData, &mut Transform, &mut Animator<Transform>, &GlobalTransform, &Camera)>,
     mut window: Single<&mut Window>,
-    mapdata: Res<MapData>
+    mapdata: Res<MapData>,
+    rapier_context: Single<RapierContext>,
+    route: Single<(&mut Route)>,
 ) {
-    let (mut cam, mut data, mut location, mut animator, mut projection) = camera.into_inner();
+    let (mut cam, mut data, mut location, mut animator, global_transform, cam_inner) = camera.into_inner();
     let new_mode = match &*cam {
         CameraType::Flying { .. } => {
             if keys.pressed(KeyCode::Enter) {
@@ -191,8 +194,32 @@ pub fn handle_others(
             }
         },
         CameraType::MapMode{ prev_mode, prev_position , .. } => {
+            let mut route = route.into_inner();
+
             window.cursor_options.grab_mode = CursorGrabMode::Confined;
             window.cursor_options.visible = true;
+            if mouse.just_pressed(MouseButton::Left) {
+                let cursor_position = window.cursor_position().unwrap();
+                let cursor_position = cam_inner.viewport_to_world(&*global_transform, cursor_position).unwrap();
+                let dir = cursor_position.direction.as_vec3();
+                let ctx = rapier_context.into_inner();
+                let hit = ctx.query_pipeline.cast_ray(
+                    &ctx.colliders, 
+                    &ctx.rigidbody_set, 
+                    location.translation, 
+                    dir, 
+                    f32::MAX, 
+                    false, 
+                    QueryFilter::only_fixed()
+                );
+                if let Some((e, dist)) = hit {
+                    let location = location.translation + dist * dir;
+                    route.destination = Some(location);
+                }
+            }
+            if mouse.just_pressed(MouseButton::Right){
+                route.destination = None;
+            }
             if keys.just_pressed(KeyCode::KeyM) {
                 animator.set_tweenable(Tween::new(
                     EaseFunction::QuadraticInOut, 

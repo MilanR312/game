@@ -31,9 +31,9 @@ pub fn ui(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UIState>,
 ) {
-    /*egui::Window::new("Test").show(contexts.ctx_mut(), |ui| {
+    egui::Window::new("Test").show(contexts.ctx_mut(), |ui| {
         ui.add(egui::Slider::new(&mut ui_state.sun_position, 0.0 ..= 6.24))
-    });*/
+    });
 }
 pub fn setup_ui(
     mut commands: Commands

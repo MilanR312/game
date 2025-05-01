@@ -1,4 +1,4 @@
-use bevy::{app::{Plugin, Startup, Update}, ecs::schedule::IntoSystemConfigs, gizmos::AppGizmoBuilder, pbr::{experimental::meshlet::MeshletPlugin, DefaultOpaqueRendererMethod}};
+use bevy::{app::{Plugin, Startup, Update}, ecs::schedule::IntoSystemConfigs, gizmos::AppGizmoBuilder, pbr::{experimental::meshlet::MeshletPlugin, DefaultOpaqueRendererMethod, ExtendedMaterial, MaterialPlugin, StandardMaterial}};
 use bevy_asset_loader::asset_collection::AssetCollectionApp;
 use bevy_hanabi::HanabiPlugin;
 use bevy_water::{WaterPlugin, WaterSettings};
@@ -6,12 +6,13 @@ use birds::{bird_boids, calculate_area_speed, spawn_birds};
 use map::{load_map, Map};
 use trees::spawn_trees;
 use water::{spawn_ocean, spawn_rivers};
+use waypoints::WayPointMaterial;
 
 mod trees;
 pub mod map;
 mod water;
 mod birds;
-mod waypoints;
+pub mod waypoints;
 mod audio;
 mod fireflies;
 mod grass;
@@ -30,10 +31,20 @@ impl Plugin for EnvironmentPlugin {
             .add_plugins(WaterPlugin)
             .add_plugins(HanabiPlugin)
             .add_plugins(grass::GrassPlugin)
+            .add_plugins(MaterialPlugin::<WayPointMaterial>{
+                prepass_enabled: false,
+                ..Default::default()
+            })
+            /*.add_plugins(MaterialPlugin::<
+                ExtendedMaterial<StandardMaterial, WayPointMaterial>
+                >{
+                    prepass_enabled: false,
+                    ..Default::default()
+                })*/
             .init_gizmo_group::<waypoints::InWorldPathGizmos>()
             .add_systems(Startup, (
                 load_map,
-                //waypoints::spawn_waypoints.after(load_map),
+                waypoints::spawn_waypoints.after(load_map),
                 //pois::spawn.after(load_map),
                 //spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
                 //spawn_trees.after(load_map), // they can still run in parallel so no chain is used
@@ -42,10 +53,11 @@ impl Plugin for EnvironmentPlugin {
                 //fireflies::setup_fireflies
             ))
             .add_systems(Update, (
-                //waypoints::draw_path, 
-                //waypoints::calculate_path,
+                waypoints::draw_path_v2, 
+                waypoints::calculate_path,
                 //trees::set_visibility_and_merge_meshes,
                 map::generate_chunks,
+                map::insert_colliders
                 //map::generate_meshlet
             ))
 
