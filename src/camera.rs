@@ -4,9 +4,10 @@ use bevy::{core_pipeline::{bloom::Bloom, dof::DepthOfField, experimental::taa::{
 use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_rapier3d::prelude::*;
 use bevy_tweening::{lens::{TransformPositionLens, TransformRotationLens}, Animator, Lens, Tween};
+use itertools::Either;
 use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin}, LookTransformPlugin};
 
-use crate::environment::{map::MapData, waypoints::Route};
+use crate::{environment::{map::MapData, waypoints::Route}, state::GameState, ui::{AnyKey, UiState}};
 
 
 struct TransformLens {
@@ -38,7 +39,8 @@ impl Plugin for CameraPlugin {
         ))*/
         app.add_plugins(TemporalAntiAliasPlugin) // allows use of TAA to reduce noise whilst we figure out mipmaps in the custom material
         .add_systems(Startup, spawn_camera)
-        .add_systems(Update, (rotate_camera, move_camera, handle_others));
+        .add_systems(Update, (rotate_camera.run_if(in_state(GameState::Game)), move_camera.run_if(in_state(GameState::Game)), handle_others.run_if(in_state(GameState::Game))))
+        .add_systems(Update, change_gamestate);
     }
 }
 
@@ -100,13 +102,58 @@ pub fn rotate_camera(
         _ => {}
     }
 }
+
+struct KeyTranslator<'a>{
+    keys: &'a ButtonInput<KeyCode>,
+    mouse: &'a ButtonInput<MouseButton>,
+    ui: &'a UiState
+}
+trait Converter{
+    fn convert(self) -> AnyKey;
+}
+impl Converter for KeyCode {
+    fn convert(self) -> AnyKey {
+        Either::Left(self)
+    }
+}
+impl Converter for MouseButton {
+    fn convert(self) -> AnyKey {
+        Either::Right(self)
+    }
+}
+impl<'a> KeyTranslator<'a> {
+    pub fn pressed<T: Converter>(&self, keycode: T) -> bool {
+        let keycode = keycode.convert();
+        let actual = self.ui.mappings.get(&keycode).copied().unwrap_or(keycode);
+        match actual {
+            Either::Left(x) => self.keys.pressed(x),
+            Either::Right(x) => self.mouse.pressed(x)
+        }
+    }
+    pub fn just_pressed<T: Converter>(&self, keycode: T) -> bool {
+        let keycode = keycode.convert();
+        let actual = self.ui.mappings.get(&keycode).copied().unwrap_or(keycode);
+        match actual {
+            Either::Left(x) => self.keys.just_pressed(x),
+            Either::Right(x) => self.mouse.just_pressed(x)
+        }
+    }
+}
+
 // move the camera based on key inputs
 pub fn move_camera(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
     camera: Single<(&mut Transform, &mut CameraType, &CameraData)>,
-    mapdata: Res<MapData>
+    mapdata: Res<MapData>,
+    state: Res<UiState>
 ) {
+    let keys = KeyTranslator{
+        keys: &keys,
+        mouse: &mouse,
+        ui: &state
+    };
     let (mut transform, mut camera, data) = camera.into_inner();
     let mut move_delta = Vec3::ZERO;
     // keycodes make it work on querty and azerty
@@ -159,7 +206,13 @@ pub fn handle_others(
     mapdata: Res<MapData>,
     rapier_context: Single<RapierContext>,
     route: Single<(&mut Route)>,
+    state: Res<UiState>
 ) {
+    let keys = KeyTranslator{
+        keys: &keys,
+        mouse: &mouse,
+        ui: &state
+    };
     let (mut cam, mut data, mut location, mut animator, global_transform, cam_inner) = camera.into_inner();
     let new_mode = match &*cam {
         CameraType::Flying { .. } => {
@@ -168,7 +221,7 @@ pub fn handle_others(
                 window.cursor_options.grab_mode = CursorGrabMode::Confined;
                 window.cursor_options.visible = false;
             }
-            if keys.pressed(KeyCode::Escape) {
+            if keys.pressed(KeyCode::Tab) {
                 data.is_mouse_grabbed = false;
                 window.cursor_options.grab_mode = CursorGrabMode::None;
                 window.cursor_options.visible = true;
@@ -198,7 +251,7 @@ pub fn handle_others(
 
             window.cursor_options.grab_mode = CursorGrabMode::Confined;
             window.cursor_options.visible = true;
-            if mouse.just_pressed(MouseButton::Left) {
+            if keys.just_pressed(MouseButton::Left) {
                 let cursor_position = window.cursor_position().unwrap();
                 let cursor_position = cam_inner.viewport_to_world(&*global_transform, cursor_position).unwrap();
                 let dir = cursor_position.direction.as_vec3();
@@ -217,7 +270,7 @@ pub fn handle_others(
                     route.destination = Some(location);
                 }
             }
-            if mouse.just_pressed(MouseButton::Right){
+            if keys.just_pressed(MouseButton::Right){
                 route.destination = None;
             }
             if keys.just_pressed(KeyCode::KeyM) {
@@ -240,6 +293,20 @@ pub fn handle_others(
     };
     if keys.just_pressed(KeyCode::KeyP) {
         println!("vec3({}, {}, {}),", location.translation.x, location.translation.y, location.translation.z);
+    }
+}
+
+pub fn change_gamestate(
+    keys: Res<ButtonInput<KeyCode>>,
+    curr_state: Res<State<GameState>>,
+    mut state: ResMut<NextState<GameState>>
+){
+    if keys.just_pressed(KeyCode::Escape){
+        let new_state = match curr_state.get() {
+            GameState::Game => GameState::Menu,
+            GameState::Menu => GameState::Game
+        };
+        state.set(new_state);
     }
 }
 
@@ -271,15 +338,19 @@ pub fn spawn_camera(
         CameraData {
             is_mouse_grabbed: true
         }, // grab the mouse at the start
-        VolumetricFog {
+        /*VolumetricFog {
             ambient_intensity: 0.0,
             ..Default::default()
-        },
+        },*/
         Animator::new(Tween::new(EaseFunction::Linear, Duration::from_millis(1), TransformLens{
             start: initial_pos,
             end: initial_pos
         })),
-        initial_pos
+        initial_pos,
+        /*DistanceFog{
+            falloff: FogFalloff::Linear { start: 50.0, end: 80.0 },
+            ..Default::default()
+        }*/
     ));
     /*commands.spawn((
         FogVolume{

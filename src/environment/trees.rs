@@ -207,7 +207,7 @@ pub fn spawn_trees(
     }
 
 
-    let birch = Tree::new(&asset_server, "fir_big", 3.0);
+    let birch = Tree::new(&asset_server, "fir_big", 1.0);
     let oak = Tree::new(&asset_server, "fir_small", 1.0);
     let trees = [birch, oak];
 

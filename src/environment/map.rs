@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, fs::File, io::{BufReader, Read}, ops::BitOr, path::Path, sync::Arc};
 
-use bevy::{asset::{io::{AssetSourceId, AssetSources, AssetWriter}, saver::{AssetSaver, SavedAsset}, ErasedLoadedAsset, LoadState, LoadedAsset, RenderAssetUsages}, gltf::{GltfMesh, GltfNode}, image::{ImageAddressMode, ImageFilterMode, ImageFormatSetting, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, pbr::{experimental::meshlet::{self, MeshToMeshletMeshConversionError, MeshletMesh, MeshletMesh3d, MeshletMeshSaver}, ExtendedMaterial}, prelude::*, render::{render_resource::{AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat, TextureUsages}, view::VisibilityRange}, tasks::block_on};
+use bevy::{asset::{io::{AssetSourceId, AssetSources, AssetWriter}, saver::{AssetSaver, SavedAsset}, ErasedLoadedAsset, LoadState, LoadedAsset, RenderAssetUsages}, gltf::{GltfMesh, GltfNode}, image::{ImageAddressMode, ImageFilterMode, ImageFormatSetting, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, math::Affine2, pbr::{experimental::meshlet::{self, MeshToMeshletMeshConversionError, MeshletMesh, MeshletMesh3d, MeshletMeshSaver}, ExtendedMaterial}, prelude::*, render::{render_resource::{AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat, TextureUsages}, view::VisibilityRange}, tasks::block_on};
 use bevy_asset_loader::asset_collection::AssetCollection;
 use bevy_rapier3d::{na::Point, prelude::*, rapier::prelude::ColliderBuilder};
 use bitflags::bitflags;
@@ -304,6 +304,20 @@ pub fn load_map(
 
     commands.insert_resource(heightmap);
 
+    let water_material = StandardMaterial {
+        base_color_texture: Some(asset_server.load("textures/textures/coast_sand_04_4K.blend/textures/coast_sand_04_diff_4k.jpg")),
+        normal_map_texture: Some(asset_server.load("textures/textures/coast_sand_04_4K.blend/textures/normals.png")),
+        //depth_map: Some(asset_server.load("textures/textures/coast_sand_04_4K.blend/textures/coast_sand_04_disp_4K.png")),
+        uv_transform: Affine2::from_scale(Vec2::splat(1.0)),
+        ..Default::default()
+    };
+
+    let plane2 = Plane3d::new(Vec3::Y, Vec2::splat(world_size) * 10.0);
+    commands.spawn(( // the map is a limited size but if we look into the ocean this would look weird since its semi transparent
+        Mesh3d(meshes.add(plane2)), // this adds a gigantic plane so that the map seems to continue even if it stops having any detail
+        MeshMaterial3d(materials.add(water_material)),
+        Transform::from_xyz(0.0, 0.1, 0.0)
+    ));
 }
 #[derive(Component)]
 pub struct NeedsCollider;

@@ -38,7 +38,7 @@ const GRASS_BLADE_VERTICES: u32 = 3;
 const GRASS_WIDTH: f32 = 0.3 * GRASS_SCALER;
 const GRASS_HEIGHT: f32 = 1.2 * GRASS_SCALER;
 const GRASS_BASE_COLOR_1: [f32;4] = [0.102,0.153,0.,1.];
-const GRASS_BASE_COLOR_2: [f32;4] = [28.0 / 255.0,38.0 / 255.0,14.0 / 255.0,1.];
+const GRASS_BASE_COLOR_2: [f32;4] = [8.0 / 255.0,12.0 / 255.0,2.0 / 255.0,1.];
 pub const GRASS_SECOND_COLOR: [f32;4] = [28.0 / 255.0,38.0 / 255.0,14.0 / 255.0,1.];
 const GRASS_SCALE_FACTOR: f32 = 1.0;
 const GRASS_HEIGHT_VARIATION_FACTOR: f32 = 0.2 * GRASS_SCALER;
@@ -672,7 +672,7 @@ impl Plugin for GrassPlugin {
     }
 }
 #[derive(Resource)]
-pub struct BushMask(Mask);
+pub struct BushMask(pub Mask);
 pub fn init_mask(
     mut commands: Commands,
     mut materials2: ResMut<Assets<StandardMaterial>>,

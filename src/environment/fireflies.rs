@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use bevy::prelude::*;
+use bevy::{math::vec3, prelude::*};
 use bevy_hanabi::prelude::*;
 
 
@@ -15,9 +15,9 @@ fn create_firefly_effect(
     color_gradient.add_key(1.0, Vec4::new(0.8, 0.7, 0.2, 0.0)); // Fade out
 
     let mut size_gradient = Gradient::new();
-    size_gradient.add_key(0.0, Vec3::splat(0.02));
-    size_gradient.add_key(0.5, Vec3::splat(0.1)); // Gentle pulse
-    size_gradient.add_key(1.0, Vec3::splat(0.05));
+    size_gradient.add_key(0.0, Vec3::splat(0.01));
+    size_gradient.add_key(0.5, Vec3::splat(0.05)); // Gentle pulse
+    size_gradient.add_key(1.0, Vec3::splat(0.02));
 
     let writer = ExprWriter::new();
 
@@ -30,7 +30,7 @@ fn create_firefly_effect(
         dimension: ShapeDimension::Surface
     };
 
-    let radius = writer.lit(0.5).uniform(writer.lit(0.9));
+    let radius = writer.lit(0.2).uniform(writer.lit(0.4));
     let theta = writer.lit(0.0).uniform(writer.lit(PI * 2.0));
     let phi = writer.lit(-PI).uniform(writer.lit(PI));
 
@@ -62,7 +62,7 @@ fn create_firefly_effect(
 
     let asset = EffectAsset::new(
         128,
-        SpawnerSettings::rate((10.).into()), 
+        SpawnerSettings::rate((4.).into()), 
         writer.finish()
     ).with_name("fireflies")
         .init(init_pos)
@@ -87,10 +87,20 @@ fn create_firefly_effect(
 
 pub fn setup_fireflies(
     mut commands: Commands,
-    mut effects: ResMut<Assets<EffectAsset>>
+    effects: ResMut<Assets<EffectAsset>>
 ) {
-    commands.spawn((
-        ParticleEffect::new(create_firefly_effect(effects)),
-        Transform::from_xyz(0.0, 12.0, 0.0)
-    ));
+    let positions = [
+        vec3(81.85775, 4.7008815, 23.67252),
+        vec3(81.77121, 4.6228757, 25.904512),
+        vec3(80.03963, 4.8517885, 28.639233),
+        vec3(78.249825, 5.0461464, 27.238514),
+        vec3(80.09793, 4.4813976, 25.126257),
+    ];
+    let effect = create_firefly_effect(effects);
+    for position in positions {
+        commands.spawn((
+            ParticleEffect::new(effect.clone()),
+            Transform::from_translation(position)
+        ));
+    }
 }

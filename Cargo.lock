@@ -953,8 +953,8 @@ dependencies = [
 
 [[package]]
 name = "bevy_hanabi"
-version = "0.15.0-dev"
-source = "git+https://github.com/djeedai/bevy_hanabi#581918cba6f35631cb3561592e05c69259920a61"
+version = "0.15.1"
+source = "git+https://github.com/djeedai/bevy_hanabi?rev=eae24ea74a3bbfc2a55014d44692df31f0cc64ab#eae24ea74a3bbfc2a55014d44692df31f0cc64ab"
 dependencies = [
  "anyhow",
  "bevy",

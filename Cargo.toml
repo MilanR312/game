@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.15.3", features = ["dynamic_linking", "jpeg", "meshlet", "meshlet_processor" ,"file_watcher"] }
+bevy = { version = "0.15.3", features = ["dynamic_linking", "jpeg", "meshlet", "meshlet_processor" ,"file_watcher","bevy_animation"] }
 bevy_asset_loader = "0.22.0"
 bevy_atmosphere = "0.12.2"
 bevy_egui = "0.33.0"
-bevy_hanabi = {git = "https://github.com/djeedai/bevy_hanabi"}
+bevy_hanabi = {git = "https://github.com/djeedai/bevy_hanabi", rev="eae24ea74a3bbfc2a55014d44692df31f0cc64ab"}
 bevy_obj = "0.15.1"
 bevy_rapier3d = "0.29.0"
 bevy_tweening = "0.12.0"

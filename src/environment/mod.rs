@@ -1,13 +1,19 @@
-use bevy::{app::{Plugin, Startup, Update}, ecs::schedule::IntoSystemConfigs, gizmos::AppGizmoBuilder, pbr::{experimental::meshlet::MeshletPlugin, DefaultOpaqueRendererMethod, ExtendedMaterial, MaterialPlugin, StandardMaterial}};
+use bevy::{app::{Plugin, Startup, Update,PostUpdate}, ecs::schedule::IntoSystemConfigs, gizmos::AppGizmoBuilder, pbr::{experimental::meshlet::MeshletPlugin, DefaultOpaqueRendererMethod}};
 use bevy_asset_loader::asset_collection::AssetCollectionApp;
 use bevy_hanabi::HanabiPlugin;
 use bevy_water::{WaterPlugin, WaterSettings};
-use birds::{bird_boids, calculate_area_speed, spawn_birds};
+use birds::BirdPlugin;
+use foxes::FoxPlugin;
+use sealife::SeaLifePlugin;
 use map::{load_map, Map};
 use trees::spawn_trees;
 use water::{spawn_ocean, spawn_rivers};
+use bevy::prelude::*;
+use birds::BirdRules;
 use waypoints::WayPointMaterial;
+use crate::environment::fire::FirePlugin;
 
+pub mod fire;
 mod trees;
 pub mod map;
 mod water;
@@ -16,7 +22,10 @@ pub mod waypoints;
 mod audio;
 mod fireflies;
 mod grass;
+mod wheat;
 mod pois;
+mod sealife;
+pub mod foxes;
 
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
@@ -27,10 +36,16 @@ impl Plugin for EnvironmentPlugin {
                 height: 1.9,
                 ..Default::default()
             })
+            .insert_resource(BirdRules::default())
             .init_collection::<Map>()
             .add_plugins(WaterPlugin)
             .add_plugins(HanabiPlugin)
             .add_plugins(grass::GrassPlugin)
+            .add_plugins(wheat::WheatPlugin)
+            //.add_plugins(FoxPlugin)
+            //.add_plugins(BirdPlugin)
+            //.add_plugins(SeaLifePlugin)
+            //.add_plugins(FirePlugin)
             .add_plugins(MaterialPlugin::<WayPointMaterial>{
                 prepass_enabled: false,
                 ..Default::default()
@@ -45,24 +60,18 @@ impl Plugin for EnvironmentPlugin {
             .add_systems(Startup, (
                 load_map,
                 waypoints::spawn_waypoints.after(load_map),
-                //pois::spawn.after(load_map),
-                //spawn_ocean.after(load_map), // all these functions require the heightmap that the load_map registers so it can only be ran after load_map
-                //spawn_trees.after(load_map), // they can still run in parallel so no chain is used
-                //spawn_rivers.after(load_map),
-                //spawn_birds.after(load_map),
-                //fireflies::setup_fireflies
-            ))
+                pois::spawn.after(load_map),
+                spawn_ocean.after(load_map),
+                spawn_trees.after(load_map),
+                spawn_rivers.after(load_map),
+                fireflies::setup_fireflies,
+            ))                     
             .add_systems(Update, (
                 waypoints::draw_path_v2, 
                 waypoints::calculate_path,
-                //trees::set_visibility_and_merge_meshes,
+                trees::set_visibility_and_merge_meshes,
                 map::generate_chunks,
-                map::insert_colliders
-                //map::generate_meshlet
-            ))
-
-            
-            //.add_systems(Update, (calculate_area_speed, bird_boids).chain()) // we need to calculate the area speed first so we chain the 2 updates so they run back to back
-        ;
+                map::insert_colliders,
+            ));
     }
 }

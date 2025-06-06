@@ -1,87 +1,186 @@
 use bevy::prelude::*;
+use bevy::animation::{AnimationPlayer, graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex}};
 use bevy_rapier3d::prelude::{RigidBody, Velocity};
 use rand::{rng, Rng};
+use bevy::time::TimerMode;
 
 use super::map::{HeightMap, MapData};
 
-// marker component for a bird
 #[derive(Component)]
 pub struct Bird;
-// a component that keeps track of the average speed and direction of all birds near a bird
-// this is done due to rust aliasing guarantees that dont allow us to calculate this in the boid function
-// so we add another function that precalculates this and the boid function then reads it
+
+#[derive(Component)]
+pub struct BirdAnimationPlayer;
+
+#[derive(Component)]
+pub struct BirdAnimationDelay {
+    timer: Timer,
+}
+
+#[derive(Resource, Clone)]
+pub struct BirdAssets {
+    pub scene_bird: Handle<Scene>,
+    pub animation_graph_bird: Handle<AnimationGraph>,
+    pub animation_nodes_bird: [AnimationNodeIndex; 1],
+}
+
 #[derive(Component)]
 pub struct AreaSpeed(Vec3);
 
-// a marker for a flock, flocks are used to keep the birds close to the island. All birds always have some force pulling them to the closest flock
-// flocks are fixed position items
 #[derive(Component)]
 pub struct Flock;
 
+pub fn load_bird_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
+) {
+    let scene_bird = asset_server.load("bird/bird.glb#Scene0");
+    let fly_bird = asset_server.load("bird/bird.glb#Animation0");
+
+    let mut graph_bird = AnimationGraph::new();
+
+    let fly_node = graph_bird.add_clip(fly_bird, 1.0, graph_bird.root);
+
+    let graph_handle_bird = graphs.add(graph_bird);
+
+    commands.insert_resource(BirdAssets {
+        scene_bird,
+        animation_graph_bird: graph_handle_bird,
+        animation_nodes_bird: [fly_node],
+    });
+}
 
 pub fn spawn_birds(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    bird_assets: Res<BirdAssets>,
+    //mut meshes: ResMut<Assets<Mesh>>,
+    //mut materials: ResMut<Assets<StandardMaterial>>,
     height_map: Res<HeightMap>,
-    map_data: Res<MapData>
+    map_data: Res<MapData>,
 ) {
-    // insert the bird rules, these are things like cohesion factors, they are stored as a resource so it can be changed on the fly
     commands.insert_resource(BirdRules::default());
 
-    let mat = materials.add(Color::linear_rgb(0.0, 0.0, 0.0)); // currently the birds are just black cubes, need to add a mesh here
-    let mesh = meshes.add(Cuboid::from_length(0.5));
-    let mut rng = rng();
-    for j in 0..1 {
-        // spawn 1 flock at the centre of the island
+    let mut rng = rand::rng();
+
+    // Spawn the flock entity
+    commands.spawn((
+        Flock,
+        Transform::from_xyz(
+            0.5 * map_data.size,
+            height_map.height_at(0.5, 0.5) * map_data.size + 10.0,
+            0.5 * map_data.size,
+        ),
+        //Mesh3d(meshes.add(Sphere::new(1.0))),
+        //MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 1.0, 0.0))),
+    ));
+
+    // Spawn birds
+    for _ in 0..100 {
+        let x = rng.random_range(-5.0..5.0) + 50.0;
+        let z = rng.random_range(-5.0..5.0) + 50.0;
+        let y = height_map.height_at(x / map_data.size, z / map_data.size) * map_data.size + 10.0;
+
         commands.spawn((
-            Flock,
-            Transform::from_xyz(0.5 * map_data.size, height_map.height_at(0.5, 0.5) * map_data.size + 10.0, 0.5 * map_data.size),
-            Mesh3d(meshes.add(Sphere::new(1.0))),
-            MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 1.0, 0.0)))
-        ));
-    }
-    for i in 0..100 {
-        // spawn 100 birds randomly
-        let x = rng.random_range(-5.0 .. 5.0) + 50.0;
-        let z = rng.random_range(-5.0 .. 5.0) + 50.0;
-        commands.spawn((
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(mat.clone()),
-            Transform::from_xyz(
-                x, 
-                height_map.height_at(x / map_data.size, z / map_data.size) * map_data.size + 10.0, 
-                z
-            ),
-            /*Exhaustion {
-                exhaustion: 0.0,
-                per_second: 33.0
-            },
-            Thinker::build()
-                .label("exhaustion")
-                .picker(FirstToScore{ threshold: 0.8 })
-                .when(Tired, Rest {
-                    per_second: 50.0,
-                    until: 20.0
-                })
-                */
             Bird,
             AreaSpeed(Vec3::ZERO),
             Velocity {
                 angvel: Vec3::ZERO,
                 linvel: Vec3::new(
-                    rng.random_range(-1.0 .. 1.0), 
-                    0.0, 
-                    rng.random_range(-1.0 .. 1.0)
-                ).normalize_or_zero()
+                    {
+                        let this = &mut rng;
+                        let range = -1.0..1.0;
+                        this.random_range(range)
+                    },
+                    0.0,
+                    {
+                        let this = &mut rng;
+                        let range = -1.0..1.0;
+                        this.random_range(range)
+                    },
+                ).normalize_or_zero(),
             },
-            RigidBody::KinematicVelocityBased // tell the physics sym this is a velocity based item
-        ));
-    }
+            RigidBody::KinematicVelocityBased,
+            Transform::from_xyz(x, y, z).with_scale(Vec3::splat(0.1)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+        ))
+        .with_children(|parent| {
+            // Scene
+            parent.spawn((
+                SceneRoot(bird_assets.scene_bird.clone()),
+                Transform::default(),
+                GlobalTransform::default(),
+            ));
 
-    
+            // Separate animation player
+            parent.spawn((
+                AnimationPlayer::default(),
+                AnimationGraphHandle(bird_assets.animation_graph_bird.clone()),
+                BirdAnimationPlayer,
+                BirdAnimationDelay {
+                    timer: Timer::from_seconds(0.2, TimerMode::Once),
+                },
+            ));
+        });
+    }
 }
 
+pub fn update_bird_animation_delay(
+    time: Res<Time>,
+    bird_assets: Res<BirdAssets>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut BirdAnimationDelay, &mut AnimationPlayer)>,
+) {
+    for (entity, mut delay, mut player) in query.iter_mut() {
+        delay.timer.tick(time.delta());
+
+        if delay.timer.finished() {
+            info!("[Bird] Timer finished for entity {entity:?}, initializing animation.");
+
+            commands.entity(entity).insert(AnimationGraphHandle(bird_assets.animation_graph_bird.clone()));
+            info!("[Bird] AnimationGraphHandle assigned to entity {entity:?}");
+
+            let node = bird_assets.animation_nodes_bird[0];
+            player.play(node).repeat();
+            info!("[Bird] Fly animation (node {node:?}) started on entity {entity:?}");
+
+            commands.entity(entity).remove::<BirdAnimationDelay>();
+            info!("[Bird] BirdAnimationDelay removed from entity {entity:?}");
+        }
+    }
+}
+
+pub fn start_bird_animations(
+    mut commands: Commands,
+    mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
+) {
+    let mut rng = rng();
+    for (entity, _player) in players.iter_mut() {
+        let delay_seconds = {
+            let this = &mut rng;
+            let range = 0.0..2.0;
+            this.random_range(range)
+        };
+        let delay_timer = Timer::from_seconds(delay_seconds, TimerMode::Once);
+        commands.entity(entity).insert(BirdAnimationDelay { timer : delay_timer });
+    }
+}
+
+pub fn update_bird_rotation(
+    mut birds: Query<(&Velocity, &mut Transform), With<Bird>>,
+) {
+    for (velocity, mut transform) in birds.iter_mut() {
+        let linvel = velocity.linvel;
+
+        if linvel.length_squared() > 0.01 {
+            let forward = linvel.normalize();
+            let base_rotation = Quat::from_rotation_arc(Vec3::Z, forward);
+            let correction = Quat::from_rotation_y(std::f32::consts::PI);
+            transform.rotation = base_rotation * correction;
+        }
+    }
+}
 
 const ROI: f32 = 1.5;
 const ROA: f32 = 0.7;
@@ -103,15 +202,9 @@ pub fn calculate_area_speed(
     }
 }
 
-// TODOS:
-// add boid flying with the AI manager so they can land
-// make the centering cloud an obloid spheroid instead of a regular sphere
-//   this would allow us to make birds live in a semi equal plane whilst allowing bigger horizontal dispertion
-
-
 #[derive(Resource)]
 pub struct BirdRules{
-    flock_pos: Vec3,
+    //flock_pos: Vec3,
     seperation: f32,
     allignment: f32,
     cohesion: f32,
@@ -121,7 +214,7 @@ pub struct BirdRules{
 impl Default for BirdRules {
     fn default() -> Self {
         Self {
-            flock_pos: Vec3::new(0.0, 5.0, 0.0),
+            //flock_pos: Vec3::new(0.0, 5.0, 0.0),
             seperation: 0.05,
             allignment: 0.05,
             cohesion: 0.0005,
@@ -164,7 +257,6 @@ pub fn bird_boids(
         let cohesion = (average_pos - position.translation).normalize_or_zero();
         velocity.linvel += cohesion * ui_state.cohesion;
 
-
         let closest_flock = flocks.iter()
             .min_by(|a,b| {
                 let a = a.translation.distance_squared(position.translation);
@@ -178,5 +270,27 @@ pub fn bird_boids(
         velocity.linvel += flock_cohesion * Vec3::new(ui_state.horizontal_flock_cohesion, ui_state.vertical_flock_cohesion, ui_state.horizontal_flock_cohesion);
 
         velocity.linvel = velocity.linvel.normalize() * 1.5;
+    }
+}
+
+pub struct BirdPlugin;
+
+impl Plugin for BirdPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            .insert_resource(BirdRules::default())
+            .add_systems(Startup, (
+                load_bird_assets,
+                spawn_birds.after(load_bird_assets),
+            ))
+            .add_systems(Update, (
+                start_bird_animations,
+                update_bird_animation_delay,
+            ))
+            .add_systems(Update, (
+                update_bird_rotation,
+                calculate_area_speed,
+                bird_boids,
+            ).chain());
     }
 }

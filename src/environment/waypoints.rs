@@ -1,4 +1,4 @@
-use crate::{pathfinding::Graph, ui::UIState};
+use crate::{pathfinding::Graph, ui::DebugUiState};
 use bevy::{asset::RenderAssetUsages, math::{vec3, vec3a, Vec3A}, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster, NotShadowReceiver}, prelude::*, render::{mesh::{MeshVertexAttribute, PrimitiveTopology}, render_resource::{AsBindGroup, VertexFormat}, view::RenderLayers}};
 use itertools::Itertools;
 
@@ -117,7 +117,6 @@ pub fn calculate_path(
         return;
     };
     let Some(end) = route.destination else {
-        println!("set path to none");
         *path = Path(None);
         return;
     };
@@ -131,7 +130,7 @@ pub struct Path(Option<CubicCurve<Vec3>>);
 #[derive(Resource)]
 pub struct DynamicPath(Option<(Handle<Mesh>, Handle<WayPointMaterial>)>);
 pub fn draw_settings(
-    ui_state: ResMut<UIState>,
+    ui_state: ResMut<DebugUiState>,
     mut config_store: ResMut<GizmoConfigStore>,
 ) {
     let (gizmo_config, _) = config_store.config_mut::<InWorldPathGizmos>();
@@ -214,7 +213,6 @@ pub fn draw_path_v2(
 ) {
     // this version actually draws a mesh instead of drawing the gizmo
     let Some(curve) = &curve.0 else {
-        println!("was none");
         let Some(x) = &curve_mesh.0 else {
             return;
         };

@@ -289,13 +289,18 @@ fn splat_sample(splat_uv: vec2f) -> Splat {
     );
 }
 
-fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32>, world_pos: vec3f, pos: vec3<f32>, idx: u32, bias: SampleBias) -> vec4<f32> {
+fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32>, world_pos: vec3f, pos: vec3<f32>, idx: u32, bias: SampleBias, is_texture_sample: bool) -> vec4<f32> {
+
     let blend = abs(normal);
     let sum = blend.x + blend.y + blend.z;
     let weights = blend / vec3<f32>(sum);
     let x_tex = sample_non_uniform(texture, x, world_pos.yz, pos.yz, idx, bias);
     let y_tex = sample_non_uniform(texture, x, world_pos.xz, pos.xz, idx, bias);
     let z_tex = sample_non_uniform(texture, x, world_pos.xy, pos.xy, idx, bias);
+
+    if (is_texture_sample && idx == 4u) {
+        return vec4f(0.0, 0.0, 0.0, 1.0);
+    }
 
     return x_tex * weights.x + y_tex * weights.y + z_tex * weights.z;
 }
@@ -323,18 +328,22 @@ fn sum(v: vec3f) -> f32 {
 }
 fn sample_non_uniform(texture: texture_2d_array<f32>, x: sampler, world_pos: vec2f, uv: vec2f, idx: u32, bias: SampleBias) -> vec4f {
     let noise = perlin_noise_2d(world_pos * 1.5);
+    let noise2 = perlin_noise_2d(world_pos * 3.0);
+    let noise3 = perlin_noise_2d(world_pos * 0.5);
     let v = 0.6;
 
-    let y = (noise + 1.0) / 2.0;
+    let all_noise = (noise + noise2 + noise3) / 3.0;
 
-    let angle = mix(0.0, 0.3, y);
-    let rotb = mat2x2f(
-        cos(angle), sin(angle),
-        -sin(angle), cos(angle)
+    let y = (all_noise + 1.0);
+    let offa = select(
+        vec2f(0.5, 0.3),
+        vec2f(0.2, 0.3),
+        y < 1.0
     );
+    let offb = vec2f(0.0, 0.0);
+    let blend = y / 2.0;
+
     //let rot = mix(rota, rotb, y);
-    let offa = vec2f(0.0, 0.0);
-    let offb = sin(vec2f(0.5, 0.3)) * rotb;
 
     let uv1 = (uv + offa) % 1;
     let uv2 = (uv + offb) % 1;
@@ -342,7 +351,11 @@ fn sample_non_uniform(texture: texture_2d_array<f32>, x: sampler, world_pos: vec
     let tex1 = textureSampleBias(texture, x, uv1, idx, bias.mip_bias);
     let tex2 = textureSampleBias(texture, x, uv2, idx, bias.mip_bias);
 
-    return mix(tex1,tex2,0.0);
+    let cuv = vec4f(uv2, 0.0, 1.0);
+    let cuv1 = vec4f(uv1, 0.0, 1.0);
+
+    return mix(tex1,tex2, blend);
+    //return vec4f(y, 0.0, 0.0, 1.0);
 }
 
 
@@ -405,15 +418,35 @@ fn fragment(
     //pos = parallaxed_at_pos;
     
     //let uvp = in.uv;
+    let colors = array(
+            vec4f(0.0, 1.0, 0.0, 1.0), // oak 0
+            vec4f(0.2, 0.8, 0.2, 1.0), // pine 1 
+            vec4f(1.0, 0.0, 0.0, 1.0), // empty 2
+            vec4f(0.0, 0.0, 0.0, 1.0), // dirt 3
+            vec4f(1.0, 0.0, 0.0, 1.0), // empty 4
+            vec4f(1.0, 1.0, 1.0, 1.0), // mountain 5
+            vec4f(1.0, 0.0,0.0, 1.0), // other dirt unused 6
+            vec4f(0.0, 0.0, 0.4, 1.0), // water 7
+            vec4f(0.0, 1.0, 1.0, 1.0) // beach 8
+    );
     let color = mix(
-        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index1, bias),
-        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index2, bias),
+        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index2, bias, true),
+        triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, splat.index1, bias, true),
         splat.splat
     );
+    let actual_index = select(
+        splat.index2,
+        splat.index1,
+        splat.splat > 0.5
+    );
+    let idx = select(0, 1, splat.splat > 0.5);
+    //let color = colors[actual_index];
+    //let color = triplanar_sample(texture_array, array_sampler, pbr_input.N, world_pos, pos, actual_index, bias, true);
+    //let color = vec4f(banded_channel, 0.0, 0.0, 1.0);
 
     let normal = mix(
-        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index1, bias),
-        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index2, bias),
+        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index1, bias, false),
+        triplanar_sample(normal_array, normal_sampler, pbr_input.N, world_pos, pos, splat.index2, bias, false),
         splat.splat
     ) * 2 - 1;
     //let normal = vec4f(0.0, 1.0, 0.0, 0.0);

@@ -8,6 +8,7 @@ use bevy_obj::ObjPlugin;
 use bevy_tweening::TweeningPlugin;
 use bevy_water::{material::{StandardWaterMaterial, WaterMaterial}, WaterPlugin, WaterSettings};
 use camera::CameraPlugin;
+use clouds::CloudPlugin;
 use environment::EnvironmentPlugin;
 use iyes_perf_ui::{entries::{PerfUiFixedTimeEntries, PerfUiFramerateEntries, PerfUiSystemEntries}, prelude::{PerfUiAllEntries, PerfUiDefaultEntries}, PerfUiPlugin};
 use material::{TerrainMaterialExtension, TestMaterialExtension};
@@ -19,6 +20,7 @@ use smooth_bevy_cameras::{controllers::unreal::{UnrealCameraBundle, UnrealCamera
 use spade::{DelaunayTriangulation, Triangulation};
 
 use bevy_rapier3d::prelude::*;
+use state::GameState;
 use thiserror::Error;
 use ui::UiPlugin;
 
@@ -29,6 +31,8 @@ mod environment;
 mod camera;
 mod pathfinding;
 mod material;
+mod state;
+mod clouds;
 
 fn main() -> eyre::Result<()> {
     let mut wgpu_settings = WgpuSettings::default();
@@ -45,7 +49,8 @@ fn main() -> eyre::Result<()> {
         }),
         ..Default::default()
     })/*.set(ImagePlugin::default_nearest())*/)
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default()) // load the physics sym for the birds
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .init_state::<GameState>() // load the physics sym for the birds
         .add_plugins(MaterialPlugin::<
             ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>
             >::default())
@@ -53,6 +58,7 @@ fn main() -> eyre::Result<()> {
             ExtendedMaterial<StandardMaterial, TestMaterialExtension>
         >::default()) // register the custom material as an extension to the base material
         .add_plugins(TweeningPlugin)
+        .add_plugins(CloudPlugin)
         .add_plugins(ObjPlugin) // load obj file loading
         .add_plugins(UiPlugin) // load our ui
         .add_plugins(SkyPlugin) // load sky related assets
