@@ -62,9 +62,9 @@ impl Plugin for EnvironmentPlugin {
                 waypoints::spawn_waypoints.after(load_map),
                 pois::spawn.after(load_map),
                 spawn_ocean.after(load_map),
-                spawn_trees.after(load_map),
+                //spawn_trees.after(load_map),
                 spawn_rivers.after(load_map),
-                fireflies::setup_fireflies,
+                //fireflies::setup_fireflies,
             ))                     
             .add_systems(Update, (
                 waypoints::draw_path_v2, 

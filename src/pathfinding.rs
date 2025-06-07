@@ -13,7 +13,9 @@ new_key_type! {
 
 #[derive(Component, Debug)]
 pub struct Graph {
+    // defines the connection of a node to surrounding nodes
     linkdata: SlotMap<NodeKey, Vec<NodeKey>>,
+    // the position of each node
     positions: SecondaryMap<NodeKey, Vec3>,
 }
 impl Graph {

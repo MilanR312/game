@@ -224,7 +224,8 @@ fn blurred_color_at_point(p: vec2f) -> vec4f {
         0.0,
         is_disabled == 1
     );
-    return vec4f(out_color.rgb, alpha_mask);
+    //return main_color;
+    return vec4f(out_color.rgb, alpha_mask) * 1.0;
 }
 
 @fragment
@@ -267,29 +268,6 @@ fn fragment(
     
     pbr_input.material.base_color = color;
     
-    //pbr_input.material.base_color = vec4f(
-    //    curve_local_uvs,
-    //    0.0,
-    //    0.0,
-    //    1.0
-    //);
-
-
-    //curve_local_uvs = (curve_local_uvs + 0.5 * globals.time);
-    //curve_local_uvs = (curve_local_uvs + 1.0) % 1.0;
-    //curve_local_uvs = curve_local_uvs / max(in.segment_length, 0.1);
-    //curve_local_uvs = (curve_local_uvs * in.segment_length) % 1.0;
-    //let curve_local_uvs = (in.uv.y - in.segmenth_length);
-    //let curve_local_uvs = in.uv * in.segmenth_length;
-    //let uvs = (1.0-in.uv) * in.segmenth_length * 5.0 % 1.0;
-    //let uvs = (1.0 - in.uv) * in.segmenth_length % 1.0;
-    //let uvs = 1.0 - uvs1;
-    // we can optionally modify the input before lighting and alpha_discard is applied
-    //pbr_input.material.base_color.b = pbr_input.material.base_color.r;
-
-    // alpha discard
-    //pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
-    //pbr_input.material.base_color.a = 0.0;
 
 #ifdef PREPASS_PIPELINE
     // in deferred mode we can't modify anything after that, as lighting is run in a separate fullscreen shader.
@@ -310,6 +288,6 @@ fn fragment(
     //out.color = out.color * 2.0;
 #endif
 
-    //out.color = vec4f(0.0, foo, 0.0, alpha_mask);
+    //return 
     return out;
 }

@@ -97,6 +97,11 @@ impl Biome {
         }
     }
 }
+impl From<Biome> for BiomeCollection {
+    fn from(value: Biome) -> Self {
+        value.to_collection()
+    }
+}
 bitflags! {
     #[derive(Component, Copy, Clone)]
     pub struct BiomeCollection: u8 {
@@ -156,7 +161,7 @@ impl MapData {
         let Rgba([r,g,b,a]) = self.biome_map.get_pixel_checked(x as u32, y as u32)?;
         Some(BiomeBlend {
             a: Biome::from_u8(*r).unwrap(),
-            b: Biome::from_u8(*b).unwrap(),
+            b: Biome::from_u8(*g).unwrap(),
             blend: *b as f32 / 255.0
         })
     }
@@ -386,7 +391,7 @@ pub fn generate_chunks(
                     MapLodType::Lod2 => -0.1,
                     MapLodType::Lod3 => -0.15,
                 };
-                transform.translation.y += y_offset;
+                //transform.translation.y += y_offset;
 
                 commands.entity(entity)
                     .remove::<MapLoadState>()

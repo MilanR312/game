@@ -301,7 +301,6 @@ fn triplanar_sample(texture: texture_2d_array<f32>, x: sampler, normal: vec3<f32
     if (is_texture_sample && idx == 4u) {
         return vec4f(0.0, 0.0, 0.0, 1.0);
     }
-
     return x_tex * weights.x + y_tex * weights.y + z_tex * weights.z;
 }
 
@@ -355,6 +354,7 @@ fn sample_non_uniform(texture: texture_2d_array<f32>, x: sampler, world_pos: vec
     let cuv1 = vec4f(uv1, 0.0, 1.0);
 
     return mix(tex1,tex2, blend);
+    //return mix(vec4f(uv1, 0, 1), vec4f(uv2, 0, 1), blend);
     //return vec4f(y, 0.0, 0.0, 1.0);
 }
 
@@ -399,7 +399,7 @@ fn fragment(
     //   -Vt,
     //   parallax_splat
     //);
-    let uvp_temp = uv;
+    let uvp_temp = uv * 100.0 % 1;
     var pos = in.world_position.xyz * 1.0 % 1; //+ vec3f(perlin_noise_2d(in.world_position.xz) * 0.02);
     let parallaxed_at_pos = parallaxed_uv(
         -0.03,

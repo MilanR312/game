@@ -1,64 +1,74 @@
 use bevy::prelude::*;
-use bevy::animation::{AnimationPlayer, graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex}};
-use bevy_rapier3d::prelude::*;
-use rand::Rng;
-
+use bevy::animation::{
+    graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex},
+    AnimationPlayer,
+};
+use rand::{rng, Rng};
 use super::map::{HeightMap, MapData};
 use crate::mask::{Mask, BlueNoise};
 
+/// Marker component for jellyfish entities.
 #[derive(Component)]
 pub struct SeaCreature;
 
 #[derive(Component)]
 pub struct SeaCreatureAnimationPlayer;
 
+/// Stores the directional influence of nearby creatures.
+#[derive(Component)]
+pub struct AreaSpeed(pub Vec3);
+
+/// Temporary component for triggering delayed animation playback.
 #[derive(Component)]
 pub struct SeaCreatureAnimationDelay {
     pub timer: Timer,
 }
 
-#[derive(Resource, Clone)]
-pub struct SeaCreatureAssets {
-    pub scene: Handle<Scene>,
-    pub animation_graph: Handle<AnimationGraph>,
-    pub animation_nodes: [AnimationNodeIndex; 2],
-}
-
-#[derive(Component)]
-pub struct AreaSpeed(pub Vec3);
-
+/// Controls directional drift for jellyfish movement.
 #[derive(Component)]
 pub struct JellyfishDrift {
     pub direction: Vec3,
     pub speed: f32,
 }
 
+/// Jellyfish animation state.
 #[derive(Component)]
-pub struct VerticalOscillation {
-    pub amplitude: f32,
-    pub frequency: f32,
-    pub phase: f32,
+pub enum JellyfishState {
+    Idle,
+    Swimming,
 }
 
+/// Original base position
 #[derive(Component)]
 pub struct BasePosition(pub Vec3);
 
-#[derive(Resource)]
-pub struct SeaMask(Mask);
+/// Shared asset data for sea creatures.
+#[derive(Resource, Clone)]
+pub struct SeaCreatureAssets {
+    pub scene: Handle<Scene>,
+    pub animation_graph: Handle<AnimationGraph>,
+    pub animation_nodes: [AnimationNodeIndex; 2], // [idle, swim]
+}
 
+/// SandMask-based noise mask for spawn positioning.
+#[derive(Resource)]
+pub struct SeaMask(pub Mask);
+
+/// Load the sand mask used for spawn noise filtering.
 pub fn load_sea_mask(mut commands: Commands) {
-    let mask = Mask::from_png("assets/011/SandMask.png").expect("Failed to load SandMask.png");
+    let mask = Mask::from_png("assets/011/SealifeMask.png").expect("Failed to load mask");
     commands.insert_resource(SeaMask(mask));
 }
 
+/// Load jellyfish model and animations.
 pub fn load_sea_creature_assets(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     let scene = asset_server.load("sealife/jellyfish.glb#Scene0");
-    let idle = asset_server.load("sealife/jellyfish.glb#Animation0"); // idle
-    let swim = asset_server.load("sealife/jellyfish.glb#Animation1"); // swimming
+    let idle = asset_server.load("sealife/jellyfish.glb#Animation0");
+    let swim = asset_server.load("sealife/jellyfish.glb#Animation1");
 
     let mut graph = AnimationGraph::new();
     let idle_node = graph.add_clip(idle, 1.0, graph.root);
@@ -71,214 +81,147 @@ pub fn load_sea_creature_assets(
         animation_graph: handle,
         animation_nodes: [idle_node, swim_node],
     });
-    info!("Loaded sea creature assets");
 }
 
+/// Spawn jellyfish using blue noise and randomized motion parameters.
 pub fn spawn_sea_creatures(
     mut commands: Commands,
     sea_assets: Res<SeaCreatureAssets>,
     height_map: Res<HeightMap>,
     map_data: Res<MapData>,
     mask: Res<SeaMask>,
-    asset_server: Res<AssetServer>,
 ) {
     let mut rng = rand::thread_rng();
     let mut generator = BlueNoise::new(0.01, mask.0.clone());
     let water_level = 2.0;
 
-    let mut count = 0;
-    let mut attempted = 0;
-    let scale = 0.2;
+    let mut spawned = 0;
+    let mut attempts = 0;
 
-    for [u, v] in generator {
-        attempted += 1;
+    while spawned < 100 && attempts < 500 {
+        attempts += 1;
 
-        let Some(height) = height_map.height_at_checked(u, v) else {
-            warn!("Skipping: no height at ({u}, {v})");
-            continue;
-        };
+        if let Some([u, v]) = generator.next() {
+            let Some(height) = height_map.height_at_checked(u, v) else { continue };
+            let x = u * map_data.size;
+            let z = v * map_data.size;
+            let base_y = height * map_data.size * 2.0;
+            let depth = water_level - base_y;
 
-        let x = u * map_data.size;
-        let z = v * map_data.size;
-        let base_y = height * map_data.size * 2.0;
-        let depth = water_level - base_y;
+            if depth < 0.4 {
+                continue;
+            }
 
-        if depth < 0.4 {
-            warn!("Skipping: too shallow at ({x:.2}, {z:.2}), depth={depth:.2}");
-            continue;
+            let final_y = base_y + rng.gen_range(0.1..(depth - 0.2).clamp(0.3, 1.2)).min(1.8);
+            let pos = Vec3::new(x, final_y, z);
+
+            let direction = Vec3::new(
+                rng.gen_range(-1.0..1.0),
+                rng.gen_range(-0.2..0.2),
+                rng.gen_range(-1.0..1.0),
+            ).normalize_or_zero();
+
+            let speed = rng.gen_range(0.08..0.12); 
+            let amplitude = rng.gen_range(0.01..0.05);
+            let frequency = rng.gen_range(0.2..0.6);
+            let phase = rng.gen_range(0.0..(2.0 * std::f32::consts::PI));
+
+            commands.spawn((
+                SeaCreature,
+                JellyfishDrift { direction, speed },
+                AreaSpeed(Vec3::ZERO),
+                BasePosition(pos),
+                JellyfishState::Swimming, 
+                Transform {
+                    translation: pos,
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::splat(0.2),
+                },
+                GlobalTransform::default(),
+                Visibility::Visible,
+            )).with_children(|parent| {
+                // model
+                parent.spawn((
+                    SceneRoot(sea_assets.scene.clone()),
+                    Transform {
+                    translation: Vec3::ZERO,
+                    rotation: Quat::from_rotation_x(std::f32::consts::FRAC_PI_2), 
+                    scale: Vec3::ONE,
+                },
+                    GlobalTransform::default(),
+                ));
+
+                // animation
+                parent.spawn((
+                    AnimationPlayer::default(),
+                    AnimationGraphHandle(sea_assets.animation_graph.clone()),
+                    SeaCreatureAnimationPlayer,
+                    SeaCreatureAnimationDelay {
+                        timer: Timer::from_seconds(rng.gen_range(0.0..2.0), TimerMode::Once),
+                    },
+                ));
+            });
+
+            spawned += 1;
         }
-
-        let max_offset = (depth - 0.2).clamp(0.3, 1.2);
-        let final_y = (base_y + rng.gen_range(0.1..max_offset)).min(1.8);
-
-        let amplitude = rng.gen_range(0.05..0.2);
-        let frequency = rng.gen_range(0.2..0.6);
-        let phase = rng.gen_range(0.0..(2.0 * std::f32::consts::PI));
-
-        let pos = Vec3::new(x, final_y, z);
-
-        let horizontal = Vec3::new(
-            rng.gen_range(-1.0..1.0),
-            0.0,
-            rng.gen_range(-1.0..1.0),
-        );
-        let vertical = Vec3::Y * rng.gen_range(-0.2..0.2);
-        let direction = (horizontal + vertical).normalize_or_zero();
-        let speed = rng.gen_range(0.03..0.06);
-
-        let mut entity = commands.spawn(SceneBundle {
-            scene: SceneRoot(sea_assets.scene.clone()),
-            transform: Transform::from_translation(pos).with_scale(Vec3::splat(scale)),
-            ..default()
-        });
-
-        entity.insert((
-            SeaCreature,
-            JellyfishDrift { direction, speed },
-            AreaSpeed(Vec3::ZERO),
-            VerticalOscillation { amplitude, frequency, phase },
-            BasePosition(pos),
-            RigidBody::Dynamic,
-            Velocity::default(),
-            LockedAxes::ROTATION_LOCKED_X | LockedAxes::ROTATION_LOCKED_Z,
-            Damping {
-                linear_damping: 0.1,
-                angular_damping: 0.1,
-            },
-            Sleeping::default(),
-            AnimationPlayer::default(),
-            AnimationGraphHandle(sea_assets.animation_graph.clone()),
-            SeaCreatureAnimationPlayer,
-            SeaCreatureAnimationDelay {
-                timer: Timer::from_seconds(rng.gen_range(0.0..2.0), TimerMode::Once),
-            },
-            Visibility::Visible,
-        ));
-
-        let entity_id = entity.id();
-        info!("Spawned jellyfish entity: {entity_id:?} at pos=({x:.2}, {final_y:.2}, {z:.2})");
-
-        count += 1;
-        if count >= 50 {
-            break;
-        }
-    }
-
-    info!("Spawned {count} jellyfish out of {attempted} attempts");
-}
-
-
-pub fn start_sea_animations(
-    mut commands: Commands,
-    mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
-) {
-    let mut rng = rand::thread_rng();
-
-    for (entity, _player) in players.iter_mut() {
-        let delay = rng.gen_range(0.0..2.0);
-        let timer = Timer::from_seconds(delay, TimerMode::Once);
-        commands.entity(entity).insert(SeaCreatureAnimationDelay { timer });
     }
 }
 
-pub fn update_sea_animation_delay(
+pub fn update_sealife_animation_delay(
     time: Res<Time>,
-    sea_assets: Res<SeaCreatureAssets>,
+    jelly_assets: Res<SeaCreatureAssets>,
     mut commands: Commands,
-    mut query: Query<(Entity, &mut SeaCreatureAnimationDelay, &mut AnimationPlayer), With<SeaCreatureAnimationPlayer>>,
+    mut query: Query<(Entity, &mut SeaCreatureAnimationDelay, &mut AnimationPlayer)>,
 ) {
     for (entity, mut delay, mut player) in query.iter_mut() {
         delay.timer.tick(time.delta());
 
         if delay.timer.finished() {
-            info!("[Sea] Timer finished for entity {entity:?}, initializing animation.");
 
-            commands.entity(entity).insert(AnimationGraphHandle(sea_assets.animation_graph.clone()));
-            info!("[Sea] AnimationGraphHandle assigned to entity {entity:?}");
-            info!("[Animation] Starting swim animation for {:?}", entity);      
-            let node = sea_assets.animation_nodes[0]; // swimming
+            commands.entity(entity).insert(AnimationGraphHandle(jelly_assets.animation_graph.clone()));
+
+            let node = jelly_assets.animation_nodes[1];
             player.play(node).repeat();
-            info!("[Sea] Swim animation (node {node:?}) started on entity {entity:?}");
 
             commands.entity(entity).remove::<SeaCreatureAnimationDelay>();
-            info!("[Sea] SeaAnimationDelay removed from entity {entity:?}");
         }
     }
 }
 
-pub fn jellyfish_vertical_oscillation(
-    time: Res<Time>,
-    mut query: Query<(&VerticalOscillation, &BasePosition, &mut Transform)>,
+pub fn start_sealife_animations(
+    mut commands: Commands,
+    mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
 ) {
-    for (osc, base, mut transform) in query.iter_mut() {
-        let t = time.elapsed().as_secs_f32();
-        let offset = osc.amplitude * (2.0 * std::f32::consts::PI * osc.frequency * t + osc.phase).sin();
-        let local_up = transform.rotation.mul_vec3(Vec3::Y);
-        transform.translation = base.0 + local_up * offset;
+    let mut rng = rng();
+    for (entity, _player) in players.iter_mut() {
+        let delay_seconds = {
+            let this = &mut rng;
+            let range = 0.0..2.0;
+            this.random_range(range)
+        };
+        let delay_timer = Timer::from_seconds(delay_seconds, TimerMode::Once);
+        commands.entity(entity).insert(SeaCreatureAnimationDelay { timer : delay_timer });
     }
 }
 
-pub fn jellyfish_bounded_drift(
-    height_map: Res<HeightMap>,
-    map_data: Res<MapData>,
-    mut set: ParamSet<(
-        Query<(&mut JellyfishDrift, &mut Velocity, &Transform, &AreaSpeed), With<SeaCreature>>,
-        Query<&Transform, With<SeaCreature>>,
-    )>,
-) {
-    let all_positions: Vec<Vec3> = set.p1().iter().map(|t| t.translation).collect();
-
-    for (mut drift, mut velocity, transform, area_speed) in set.p0().iter_mut() {
-        let pos = transform.translation;
-        let u = pos.x / map_data.size;
-        let v = pos.z / map_data.size;
-
-        if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
-            continue;
-        }
-
-        let Some(raw) = height_map.height_at_checked(u, v) else { continue; };
-        let seabed = raw * map_data.size * 2.0;
-        let min_y = seabed + 0.3;
-        let max_y = 2.0 - 0.2;
-
-        let align = area_speed.0 - drift.direction;
-        drift.direction += align * 0.05;
-
-        let separation = all_positions.iter()
-            .filter(|x| **x != pos)
-            .filter(|x| x.distance_squared(pos) < 0.4 * 0.4)
-            .fold(Vec3::ZERO, |acc, x| acc + (pos - *x));
-        drift.direction += separation.normalize_or_zero() * 0.1;
-
-        drift.direction = drift.direction.normalize_or_zero();
-
-        if pos.y < min_y && drift.direction.y < 0.0 {
-            drift.direction.y *= -1.0;
-        }
-        if pos.y > max_y && drift.direction.y > 0.0 {
-            drift.direction.y *= -1.0;
-        }
-
-        velocity.linvel = drift.direction * drift.speed + Vec3::Y * velocity.linvel.y;
-    }
-}
-
+/// Rotate jellyfish toward direction of motion.
 pub fn update_jellyfish_rotation(
-    mut query: Query<(&Velocity, &mut Transform), With<SeaCreature>>,
+    mut query: Query<(&JellyfishDrift, &JellyfishState, &mut Transform)>,
 ) {
-    for (velocity, mut transform) in query.iter_mut() {
-        let linvel = velocity.linvel;
-        let flat_velocity = Vec3::new(linvel.x, 0.0, linvel.z);
-
-        if flat_velocity.length_squared() > 0.01 {
-            let forward = flat_velocity.normalize();
-            let desired_rot = Quat::from_rotation_y(forward.x.atan2(forward.z) + std::f32::consts::FRAC_PI_2);
-            transform.rotation = transform.rotation.slerp(desired_rot, 0.1);
+    for (drift, state, mut transform) in query.iter_mut() {
+        if let JellyfishState::Swimming = state {
+            let dir = drift.direction.normalize_or_zero();
+            if dir.length_squared() > 0.001 {
+                let base = Quat::from_rotation_arc(Vec3::Z, dir);
+                let correction = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2); // was rotation_z!
+                transform.rotation = base * correction;
+            }
         }
     }
 }
 
+
+/// Compute average direction from nearby creatures.
 pub fn calculate_area_speed(
     speeds: Query<(&JellyfishDrift, &Transform), With<SeaCreature>>,
     mut areaspeed: Query<(Entity, &mut AreaSpeed), With<SeaCreature>>,
@@ -287,7 +230,7 @@ pub fn calculate_area_speed(
     for (entity, mut areaspeed) in areaspeed.iter_mut() {
         let (_, own_pos) = speeds.get(entity).unwrap();
         let (group_velocity, count) = speeds.iter()
-            .filter(|(_, transform)| transform.translation.distance_squared(own_pos.translation) < ROI * ROI)
+            .filter(|(_, t)| t.translation.distance_squared(own_pos.translation) < ROI * ROI)
             .fold((Vec3::ZERO, 0.0), |acc, (drift, _)| {
                 (acc.0 + drift.direction, acc.1 + 1.0)
             });
@@ -296,6 +239,63 @@ pub fn calculate_area_speed(
     }
 }
 
+pub fn jellyfish_drift_system(
+    time: Res<Time>,
+    height_map: Res<HeightMap>,
+    map_data: Res<MapData>,
+    mask: Res<SeaMask>,
+    mut base_query: Query<&mut BasePosition>,
+    mut query: Query<(Entity, &mut JellyfishDrift, &JellyfishState, &mut Transform, &AreaSpeed), With<SeaCreature>>,
+) {
+    for (entity, mut drift, state, mut transform, area_speed) in query.iter_mut() {
+        if let JellyfishState::Swimming = state {
+            let pos = transform.translation;
+            let u = pos.x / map_data.size;
+            let v = pos.z / map_data.size;
+
+            if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+                continue;
+            }
+
+            let Some(height) = height_map.height_at_checked(u, v) else { continue };
+            let seabed = height * map_data.size * 2.0;
+            let min_y = seabed + 0.3;
+            let max_y = 2.0 - 0.2;
+
+            let Some(mask_value) = mask.0.sample_at_checked(u, v) else { continue };
+            if mask_value < 0.05 {
+                drift.direction.x *= -1.0;
+                drift.direction.z *= -1.0;
+            }
+
+            let sample_left = mask.0.sample_at_checked((u - 0.01).clamp(0.0, 1.0), v).unwrap_or(0.0);
+            let sample_right = mask.0.sample_at_checked((u + 0.01).clamp(0.0, 1.0), v).unwrap_or(0.0);
+            let sample_down = mask.0.sample_at_checked(u, (v - 0.01).clamp(0.0, 1.0)).unwrap_or(0.0);
+            let sample_up = mask.0.sample_at_checked(u, (v + 0.01).clamp(0.0, 1.0)).unwrap_or(0.0);
+
+            let mask_gradient = Vec3::new(sample_right - sample_left, 0.0, sample_up - sample_down);
+            drift.direction += mask_gradient.normalize_or_zero() * 0.05;
+
+            let current_dir = drift.direction;
+            let align = area_speed.0 - current_dir;
+            drift.direction += align * 0.05;            
+            drift.direction = drift.direction.normalize_or_zero();
+
+            if pos.y < min_y && drift.direction.y < 0.0 {
+                drift.direction.y *= -1.0;
+            }
+            if pos.y > max_y && drift.direction.y > 0.0 {
+                drift.direction.y *= -1.0;
+            }
+
+            let forward = transform.rotation * Vec3::Z;
+            if let Ok(mut base) = base_query.get_mut(entity) {
+                base.0 = transform.translation;
+            }
+            transform.translation += forward * drift.speed * time.delta_secs();
+        }
+    }
+}
 pub struct SeaLifePlugin;
 
 impl Plugin for SeaLifePlugin {
@@ -307,12 +307,13 @@ impl Plugin for SeaLifePlugin {
                 spawn_sea_creatures.after(load_sea_creature_assets),
             ))
             .add_systems(Update, (
-                start_sea_animations,
-                update_sea_animation_delay,
+                start_sealife_animations,
+                update_sealife_animation_delay,
+            ))
+            .add_systems(Update, (
                 calculate_area_speed,
-                jellyfish_vertical_oscillation,
+                jellyfish_drift_system,
                 update_jellyfish_rotation,
-                jellyfish_bounded_drift,
-            ));
+            ).chain());
     }
 }
